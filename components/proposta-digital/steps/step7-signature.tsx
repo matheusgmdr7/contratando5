@@ -52,16 +52,12 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
     }
   }, [showSignatureModal, isMobile])
 
-  // Adicionar hook para bloquear zoom no mobile
+  // Bloquear scroll/zoom do body enquanto o modal está aberto no mobile
   useEffect(() => {
     if (showSignatureModal && isMobile) {
-      // Bloquear scroll
       document.body.style.overflow = 'hidden'
-      // Bloquear zoom
       const preventZoom = (e: TouchEvent) => {
-        if (e.touches.length > 1) {
-          e.preventDefault()
-        }
+        if (e.touches.length > 1) e.preventDefault()
       }
       document.addEventListener('touchmove', preventZoom, { passive: false })
       return () => {
@@ -70,6 +66,28 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
       }
     }
   }, [showSignatureModal, isMobile])
+
+  // Ajustar e resetar o canvas ao abrir o modal
+  useEffect(() => {
+    if (!showSignatureModal) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const dpr = window.devicePixelRatio || 1
+    const width = window.innerWidth
+    const height = window.innerHeight * 0.6
+    canvas.width = width * dpr
+    canvas.height = height * dpr
+    canvas.style.width = `${width}px`
+    canvas.style.height = `${height}px`
+    const ctx = canvas.getContext('2d')
+    if (ctx) ctx.scale(dpr, dpr)
+    ctx?.clearRect(0, 0, canvas.width, canvas.height)
+    if (signaturePreview) {
+      const img = new window.Image()
+      img.onload = () => ctx?.drawImage(img, 0, 0, width, height)
+      img.src = signaturePreview
+    }
+  }, [showSignatureModal])
 
   useEffect(() => {
     const canvas = canvasRef.current
