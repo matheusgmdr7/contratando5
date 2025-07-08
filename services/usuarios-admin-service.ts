@@ -7,6 +7,8 @@ export interface UsuarioAdmin {
   email: string
   senha_hash?: string // agora opcional
   ativo: boolean
+  perfil: string // novo campo obrigatório
+  permissoes: any // novo campo obrigatório (json)
   ultimo_login?: string
   created_at: string
   updated_at: string
@@ -16,6 +18,8 @@ export interface CriarUsuarioData {
   nome: string
   email: string
   senha: string
+  perfil?: string
+  permissoes?: any
 }
 
 export interface LoginData {
@@ -63,6 +67,8 @@ export class UsuariosAdminService {
             email: dados.email.toLowerCase(),
             senha_hash: senhaHash,
             ativo: true,
+            perfil: dados.perfil || "assistente",
+            permissoes: dados.permissoes || {},
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -163,7 +169,7 @@ export class UsuariosAdminService {
 
       const { data: usuarios, error } = await supabase
         .from("usuarios_admin")
-        .select("id, nome, email, ativo, ultimo_login, created_at, updated_at")
+        .select("id, nome, email, ativo, ultimo_login, created_at, updated_at, perfil, permissoes")
         .order("created_at", { ascending: false })
 
       if (error) {
@@ -178,7 +184,11 @@ export class UsuariosAdminService {
       console.log(`✅ ${usuarios?.length || 0} usuários encontrados`)
       return {
         success: true,
-        usuarios: usuarios || [],
+        usuarios: (usuarios || []).map(u => ({
+          ...u,
+          perfil: u.perfil || "assistente",
+          permissoes: u.permissoes || {},
+        })),
       }
     } catch (error: any) {
       console.error("❌ Erro inesperado ao listar usuários:", error)
@@ -277,7 +287,7 @@ export class UsuariosAdminService {
 
       const { data: usuario, error } = await supabase
         .from("usuarios_admin")
-        .select("id, nome, email, ativo, ultimo_login, created_at, updated_at")
+        .select("id, nome, email, ativo, ultimo_login, created_at, updated_at, perfil, permissoes")
         .eq("id", id)
         .single()
 
@@ -292,7 +302,11 @@ export class UsuariosAdminService {
       console.log("✅ Usuário encontrado:", usuario.email)
       return {
         success: true,
-        usuario,
+        usuario: {
+          ...usuario,
+          perfil: usuario.perfil || "assistente",
+          permissoes: usuario.permissoes || {},
+        },
       }
     } catch (error: any) {
       console.error("❌ Erro inesperado ao buscar usuário:", error)
@@ -382,7 +396,7 @@ export class UsuariosAdminService {
 
       const { data: usuario, error } = await supabase
         .from("usuarios_admin")
-        .select("id, nome, email, ativo, ultimo_login, created_at, updated_at")
+        .select("id, nome, email, ativo, ultimo_login, created_at, updated_at, perfil, permissoes")
         .eq("email", email)
         .eq("ativo", true)
         .single()
@@ -393,7 +407,11 @@ export class UsuariosAdminService {
 
       return {
         success: true,
-        usuario,
+        usuario: {
+          ...usuario,
+          perfil: usuario.perfil || "assistente",
+          permissoes: usuario.permissoes || {},
+        },
       }
     } catch (error: any) {
       console.error("❌ Erro ao validar sessão:", error)
@@ -430,18 +448,29 @@ export async function inicializarSistemaUsuarios() {
   return true
 }
 
-export async function criarUsuarioAdmin(dados: CriarUsuarioData, criadorId: string) {
-  // Se quiser usar criadorId, adicione no insert
+export async function criarUsuarioAdmin(dados: CriarUsuarioData) {
   return UsuariosAdminService.criarUsuario(dados)
 }
 
-export async function atualizarUsuarioAdmin(id: string, dados: CriarUsuarioData, criadorId: string) {
-  // Implemente a lógica de update conforme necessário
-  throw new Error("Função de atualização de usuário não implementada")
+export async function atualizarUsuarioAdmin(id: string, dados: Partial<UsuarioAdmin>) {
+  // Atualiza apenas os campos enviados
+  const { error } = await supabase
+    .from("usuarios_admin")
+    .update({
+      nome: dados.nome,
+      email: dados.email?.toLowerCase(),
+      perfil: dados.perfil,
+      permissoes: dados.permissoes,
+      ativo: dados.ativo,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+
+  if (error) throw new Error(error.message)
+  return true
 }
 
-export async function excluirUsuarioAdmin(id: string) {
-  // Implemente a lógica de exclusão conforme necessário
+export async function excluirUsuarioAdmin() {
   throw new Error("Função de exclusão de usuário não implementada")
 }
 
@@ -449,7 +478,6 @@ export async function alterarStatusUsuarioAdmin(id: string, ativo: boolean) {
   return UsuariosAdminService.alterarStatusUsuario(id, ativo)
 }
 
-export async function buscarPermissoesPerfil(perfil: string) {
-  // Implemente conforme sua lógica de permissões
+export async function buscarPermissoesPerfil() {
   throw new Error("Função de buscar permissões não implementada")
 }
