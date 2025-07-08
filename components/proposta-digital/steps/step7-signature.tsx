@@ -52,6 +52,25 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
     }
   }, [showSignatureModal, isMobile])
 
+  // Adicionar hook para bloquear zoom no mobile
+  useEffect(() => {
+    if (showSignatureModal && isMobile) {
+      // Bloquear scroll
+      document.body.style.overflow = 'hidden'
+      // Bloquear zoom
+      const preventZoom = (e: TouchEvent) => {
+        if (e.touches.length > 1) {
+          e.preventDefault()
+        }
+      }
+      document.addEventListener('touchmove', preventZoom, { passive: false })
+      return () => {
+        document.body.style.overflow = 'unset'
+        document.removeEventListener('touchmove', preventZoom)
+      }
+    }
+  }, [showSignatureModal, isMobile])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -270,13 +289,17 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                 {signaturePreview ? (
                   <div className="flex flex-col items-center">
                     <img src={signaturePreview} alt="Prévia da assinatura" className="border rounded w-full max-w-xs bg-white" />
-                    <Button className="mt-2" onClick={() => setShowSignatureModal(true)}>Refazer Assinatura</Button>
+                    <Button className="mt-2" onClick={() => setShowSignatureModal(true)}>
+                      Refazer Assinatura
+                    </Button>
                   </div>
                 ) : (
-                  <Button onClick={() => setShowSignatureModal(true)}>Assinar</Button>
+                  <Button onClick={() => setShowSignatureModal(true)}>
+                    Assinar
+                  </Button>
                 )}
                 <Dialog open={showSignatureModal} onOpenChange={setShowSignatureModal}>
-                  <DialogContent className="p-0 max-w-full w-screen h-screen flex items-center justify-center bg-white">
+                  <DialogContent className="p-0 max-w-full w-screen h-screen flex items-center justify-center bg-white !rounded-none !shadow-none">
                     <DialogTitle className="sr-only">Assinatura Digital</DialogTitle>
                     <DialogDescription className="sr-only">
                       Área para assinar digitalmente o documento usando o dedo ou caneta
@@ -304,8 +327,8 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                       <div className="flex-1 relative">
                         <canvas
                           ref={canvasRef}
-                          className="w-full h-full border-0 cursor-crosshair bg-white"
-                          style={{height: '100%', width: '100%'}}
+                          className="w-full h-full border-0 cursor-crosshair bg-white touch-none"
+                          style={{height: '100%', width: '100%', touchAction: 'none'}} // touchAction previne scroll/zoom
                           onMouseDown={startDrawing}
                           onMouseMove={draw}
                           onMouseUp={stopDrawing}
@@ -332,14 +355,14 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                           <Button 
                             variant="outline" 
                             onClick={clearSignature}
-                            className="flex-1 max-w-[120px]"
+                            className="flex-1 max-w-[140px] py-4 text-base"
                           >
-                            <RotateCcw className="h-4 w-4 mr-2" />
+                            <RotateCcw className="h-5 w-5 mr-2" />
                             Limpar
                           </Button>
                           <Button 
                             onClick={() => saveSignature(true)}
-                            className="flex-1 max-w-[120px]"
+                            className="flex-1 max-w-[140px] py-4 text-base"
                             disabled={!hasSignature}
                           >
                             Salvar
@@ -347,7 +370,7 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                           <Button 
                             variant="outline" 
                             onClick={() => setShowSignatureModal(false)}
-                            className="flex-1 max-w-[120px]"
+                            className="flex-1 max-w-[140px] py-4 text-base"
                           >
                             Cancelar
                           </Button>
