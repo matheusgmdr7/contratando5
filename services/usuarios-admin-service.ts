@@ -5,7 +5,7 @@ export interface UsuarioAdmin {
   id: string
   nome: string
   email: string
-  senha_hash: string
+  senha_hash?: string // agora opcional
   ativo: boolean
   ultimo_login?: string
   created_at: string
@@ -84,7 +84,7 @@ export class UsuariosAdminService {
         message: "Usuário criado com sucesso",
         usuario: novoUsuario,
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro inesperado ao criar usuário:", error)
       return {
         success: false,
@@ -145,7 +145,7 @@ export class UsuariosAdminService {
           senha_hash: undefined, // Não retornar o hash da senha
         },
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro inesperado no login:", error)
       return {
         success: false,
@@ -180,7 +180,7 @@ export class UsuariosAdminService {
         success: true,
         usuarios: usuarios || [],
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro inesperado ao listar usuários:", error)
       return {
         success: false,
@@ -218,7 +218,7 @@ export class UsuariosAdminService {
         success: true,
         message: `Usuário ${ativo ? "ativado" : "desativado"} com sucesso`,
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro inesperado ao alterar status:", error)
       return {
         success: false,
@@ -259,7 +259,7 @@ export class UsuariosAdminService {
         success: true,
         message: "Senha alterada com sucesso",
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro inesperado ao alterar senha:", error)
       return {
         success: false,
@@ -294,7 +294,7 @@ export class UsuariosAdminService {
         success: true,
         usuario,
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro inesperado ao buscar usuário:", error)
       return {
         success: false,
@@ -329,7 +329,7 @@ export class UsuariosAdminService {
         existem: total > 0,
         total,
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro inesperado ao verificar usuários:", error)
       return {
         success: false,
@@ -362,7 +362,7 @@ export class UsuariosAdminService {
       }
 
       return resultado
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro ao criar usuário padrão:", error)
       return {
         success: false,
@@ -395,7 +395,7 @@ export class UsuariosAdminService {
         success: true,
         usuario,
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro ao validar sessão:", error)
       return { success: false }
     }
@@ -428,4 +428,28 @@ export async function inicializarSistemaUsuarios() {
     if (!criado.success) throw new Error(criado.message || "Erro ao criar usuário padrão")
   }
   return true
+}
+
+export async function criarUsuarioAdmin(dados: CriarUsuarioData, criadorId: string) {
+  // Se quiser usar criadorId, adicione no insert
+  return UsuariosAdminService.criarUsuario(dados)
+}
+
+export async function atualizarUsuarioAdmin(id: string, dados: CriarUsuarioData, criadorId: string) {
+  // Implemente a lógica de update conforme necessário
+  throw new Error("Função de atualização de usuário não implementada")
+}
+
+export async function excluirUsuarioAdmin(id: string) {
+  // Implemente a lógica de exclusão conforme necessário
+  throw new Error("Função de exclusão de usuário não implementada")
+}
+
+export async function alterarStatusUsuarioAdmin(id: string, ativo: boolean) {
+  return UsuariosAdminService.alterarStatusUsuario(id, ativo)
+}
+
+export async function buscarPermissoesPerfil(perfil: string) {
+  // Implemente conforme sua lógica de permissões
+  throw new Error("Função de buscar permissões não implementada")
 }
