@@ -72,15 +72,16 @@ export default function UsuariosPage() {
   const [showPermissoesModal, setShowPermissoesModal] = useState(false)
   const [usuarioAtual, setUsuarioAtual] = useState<UsuarioAdmin | null>(null)
   const [permissoesPerfil, setPermissoesPerfil] = useState<PermissaoModulo[]>([])
-  const [novoUsuario, setNovoUsuario] = useState<CriarUsuarioAdmin>({
+  const [novoUsuario, setNovoUsuario] = useState<any>({
     nome: "",
     email: "",
     senha: "",
     perfil: "assistente",
-    permissoes_customizadas: {},
+    permissoes: {},
   })
   const [confirmarSenha, setConfirmarSenha] = useState("")
   const [salvando, setSalvando] = useState(false)
+  const [permissoesParaVisualizar, setPermissoesParaVisualizar] = useState<any>({})
 
   useEffect(() => {
     inicializar()
@@ -163,12 +164,24 @@ export default function UsuariosPage() {
       if (usuarioAtual) {
         // Atualizar usuário existente
         console.log(`✏️ Atualizando usuário: ${usuarioAtual.email}`)
-        await atualizarUsuarioAdmin(usuarioAtual.id, novoUsuario, criadorId)
+        await atualizarUsuarioAdmin(usuarioAtual.id, {
+          nome: novoUsuario.nome,
+          email: novoUsuario.email,
+          perfil: novoUsuario.perfil || "assistente",
+          permissoes: novoUsuario.permissoes || {},
+          ativo: novoUsuario.ativo,
+        })
         toast.success("Usuário atualizado com sucesso")
       } else {
         // Criar novo usuário
         console.log(`👤 Criando novo usuário: ${novoUsuario.email}`)
-        await criarUsuarioAdmin(novoUsuario, criadorId)
+        await criarUsuarioAdmin({
+          nome: novoUsuario.nome,
+          email: novoUsuario.email,
+          senha: novoUsuario.senha,
+          perfil: novoUsuario.perfil || "assistente",
+          permissoes: novoUsuario.permissoes || {},
+        })
         toast.success("Usuário criado com sucesso")
       }
 
@@ -206,7 +219,7 @@ export default function UsuariosPage() {
       email: usuario.email,
       senha: "",
       perfil: usuario.perfil,
-      permissoes_customizadas: usuario.permissoes || {},
+      permissoes: usuario.permissoes || {},
     })
     setConfirmarSenha("")
     setShowModal(true)
@@ -214,11 +227,10 @@ export default function UsuariosPage() {
 
   const handleAlterarStatus = async (usuario: UsuarioAdmin) => {
     try {
-      const novoStatus = usuario.status === "ativo" ? "inativo" : "ativo"
-      console.log(`🔄 Alterando status de ${usuario.email} para: ${novoStatus}`)
-
+      const novoStatus = !usuario.ativo
+      console.log(`🔄 Alterando status de ${usuario.email} para: ${novoStatus ? "ativo" : "inativo"}`)
       await alterarStatusUsuarioAdmin(usuario.id, novoStatus)
-      toast.success(`Usuário ${novoStatus === "ativo" ? "ativado" : "desativado"} com sucesso`)
+      toast.success(`Usuário ${novoStatus ? "ativado" : "desativado"} com sucesso`)
       await carregarUsuarios()
     } catch (error: any) {
       console.error("❌ Erro ao alterar status do usuário:", error)
@@ -226,10 +238,10 @@ export default function UsuariosPage() {
     }
   }
 
-  const handleVisualizarPermissoes = async (usuario: UsuarioAdmin) => {
+  const handleVisualizarPermissoes = (usuario: UsuarioAdmin) => {
     console.log(`👁️ Visualizando permissões de: ${usuario.email}`)
     setUsuarioAtual(usuario)
-    await carregarPermissoesPerfil(usuario.perfil)
+    setPermissoesParaVisualizar(usuario.permissoes || {})
     setShowPermissoesModal(true)
   }
 
@@ -240,7 +252,7 @@ export default function UsuariosPage() {
       email: "",
       senha: "",
       perfil: "assistente",
-      permissoes_customizadas: {},
+      permissoes: {},
     })
     setConfirmarSenha("")
   }
@@ -333,14 +345,10 @@ export default function UsuariosPage() {
                       <TableCell>{getPerfilBadge(usuario.perfil)}</TableCell>
                       <TableCell>
                         <Badge
-                          variant={usuario.status === "ativo" ? "default" : "outline"}
-                          className={`${
-                            usuario.status === "ativo"
-                              ? "bg-green-100 text-green-800 hover:bg-green-100"
-                              : "bg-gray-100 text-gray-800 hover:bg-gray-100"
-                          }`}
+                          variant={usuario.ativo ? "default" : "outline"}
+                          className={usuario.ativo ? "bg-green-100 text-green-800 hover:bg-green-100" : "bg-gray-100 text-gray-800 hover:bg-gray-100"}
                         >
-                          {usuario.status === "ativo" ? "Ativo" : "Inativo"}
+                          {usuario.ativo ? "Ativo" : "Inativo"}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -365,9 +373,9 @@ export default function UsuariosPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleAlterarStatus(usuario)}
-                            className={usuario.status === "ativo" ? "text-orange-600" : "text-green-600"}
+                            className={usuario.ativo ? "text-orange-600" : "text-green-600"}
                           >
-                            {usuario.status === "ativo" ? "Desativar" : "Ativar"}
+                            {usuario.ativo ? "Desativar" : "Ativar"}
                           </Button>
                           {usuario.perfil !== "master" && (
                             <Button
@@ -496,36 +504,34 @@ export default function UsuariosPage() {
 
             <TabsContent value="permissoes" className="space-y-4">
               <div className="text-sm text-gray-600 mb-4">
-                As permissões são definidas automaticamente pelo perfil selecionado. O perfil{" "}
-                <strong>{novoUsuario.perfil}</strong> terá as seguintes permissões:
+                Personalize as permissões deste usuário. Marque as ações permitidas para cada módulo do sistema.
               </div>
-
               <div className="space-y-4">
                 {MODULOS_SISTEMA.map((modulo) => (
                   <div key={modulo.key} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <h4 className="font-medium">{modulo.label}</h4>
-                        <p className="text-sm text-gray-500">{modulo.description}</p>
-                      </div>
-                    </div>
+                    <div className="font-medium mb-2">{modulo.label}</div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-3 h-3 rounded-full bg-gray-300"></div>
-                        <Label>Visualizar</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-3 h-3 rounded-full bg-gray-300"></div>
-                        <Label>Criar</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-3 h-3 rounded-full bg-gray-300"></div>
-                        <Label>Editar</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-3 h-3 rounded-full bg-gray-300"></div>
-                        <Label>Excluir</Label>
-                      </div>
+                      {["visualizar", "criar", "editar", "excluir"].map((acao) => (
+                        <label key={acao} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!novoUsuario.permissoes?.[modulo.key]?.[acao]}
+                            onChange={(e) => {
+                              setNovoUsuario((prev) => ({
+                                ...prev,
+                                permissoes: {
+                                  ...prev.permissoes,
+                                  [modulo.key]: {
+                                    ...prev.permissoes?.[modulo.key],
+                                    [acao]: e.target.checked,
+                                  },
+                                },
+                              }))
+                            }}
+                          />
+                          <span className="capitalize">{acao}</span>
+                        </label>
+                      ))}
                     </div>
                   </div>
                 ))}
@@ -563,12 +569,12 @@ export default function UsuariosPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 max-h-96 overflow-y-auto">
-            {permissoesPerfil.length > 0 ? (
-              permissoesPerfil.map((permissao) => (
-                <div key={permissao.modulo} className="border rounded-lg p-3">
-                  <h4 className="font-medium capitalize mb-2">{permissao.modulo}</h4>
+            {Object.keys(permissoesParaVisualizar).length > 0 ? (
+              Object.entries(permissoesParaVisualizar).map(([modulo, permissoes]) => (
+                <div key={modulo} className="border rounded-lg p-3">
+                  <h4 className="font-medium capitalize mb-2">{modulo}</h4>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    {Object.entries(permissao.permissoes).map(([acao, permitido]) => (
+                    {Object.entries(permissoes as any).map(([acao, permitido]) => (
                       <div key={acao} className="flex items-center space-x-2">
                         <div className={`w-2 h-2 rounded-full ${permitido ? "bg-green-500" : "bg-red-500"}`}></div>
                         <span className="capitalize">{acao}</span>
