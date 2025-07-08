@@ -139,6 +139,81 @@ export default function EmAnalisePage() {
     return origemConfig[origem as keyof typeof origemConfig] || { label: origem, color: "bg-gray-50 text-gray-700 border border-gray-200" }
   }
 
+  // Função para parsear dependentes igual à página de propostas
+  function parseDependentes(proposta: any) {
+    let dependentesArr: any[] = []
+    if (proposta.dependentes_dados && Array.isArray(proposta.dependentes_dados) && proposta.dependentes_dados.length > 0) {
+      dependentesArr = proposta.dependentes_dados
+    } else if (typeof proposta.dependentes === "string" && proposta.dependentes && proposta.dependentes.length > 0) {
+      try {
+        dependentesArr = JSON.parse(proposta.dependentes)
+      } catch {}
+    } else if (Array.isArray(proposta.dependentes) && proposta.dependentes && proposta.dependentes.length > 0) {
+      dependentesArr = proposta.dependentes
+    }
+    return dependentesArr
+  }
+
+  // Função para calcular valor total mensal (titular + dependentes)
+  function calcularValorTotalMensal(proposta: any) {
+    let total = 0
+    let valorTitular = proposta.valor_mensal || proposta.valor || proposta.valor_total || 0
+    if (typeof valorTitular !== "number") {
+      valorTitular = String(valorTitular).replace(/[^\d,\.]/g, "").replace(",", ".")
+      valorTitular = Number.parseFloat(valorTitular)
+    }
+    if (!isNaN(valorTitular) && valorTitular > 0) {
+      total += valorTitular
+    }
+    const dependentesArr = parseDependentes(proposta)
+    if (dependentesArr && dependentesArr.length > 0) {
+      dependentesArr.forEach((dep: any) => {
+        let valorDep = dep.valor_individual || dep.valor || dep.valor_plano || 0
+        if (typeof valorDep !== "number") {
+          valorDep = String(valorDep).replace(/[^\d,\.]/g, "").replace(",", ".")
+          valorDep = Number.parseFloat(valorDep)
+        }
+        if (!isNaN(valorDep) && valorDep > 0) {
+          total += valorDep
+        }
+      })
+    }
+    return total
+  }
+
+  function formatarDataSegura(dataString: any) {
+    if (!dataString) return "N/A"
+    try {
+      const data = new Date(dataString)
+      if (isNaN(data.getTime())) {
+        return "Data inválida"
+      }
+      return data.toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    } catch (error) {
+      return "Erro na data"
+    }
+  }
+
+  function formatarHoraSegura(dataString: any) {
+    if (!dataString) return "N/A"
+    try {
+      const data = new Date(dataString)
+      if (isNaN(data.getTime())) {
+        return "Hora inválida"
+      }
+      return data.toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    } catch (error) {
+      return "Erro na hora"
+    }
+  }
+
   const propostasFiltradas = propostas.filter((proposta) => {
     const nomeCliente = obterNomeCliente(proposta).toLowerCase()
     const emailCliente = obterEmailCliente(proposta).toLowerCase()
@@ -311,10 +386,12 @@ export default function EmAnalisePage() {
                     </td>
                     <td className="px-4 py-4">
                       <div className="text-sm font-medium text-gray-900">
-                        {proposta.valor ? formatarMoeda(proposta.valor) : "Valor não informado"}
+                        {typeof calcularValorTotalMensal === 'function'
+                          ? `R$ ${calcularValorTotalMensal(proposta).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                          : (proposta.valor ? formatarMoeda(proposta.valor) : "Valor não informado")}
                       </div>
-                      <div className="text-xs text-gray-500">{new Date(proposta.created_at).toLocaleDateString("pt-BR")}</div>
-                      <div className="text-xs text-gray-500">{new Date(proposta.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+                      <div className="text-xs text-gray-500">{typeof formatarDataSegura === 'function' ? formatarDataSegura(proposta.created_at) : new Date(proposta.created_at).toLocaleDateString("pt-BR")}</div>
+                      <div className="text-xs text-gray-500">{typeof formatarHoraSegura === 'function' ? formatarHoraSegura(proposta.created_at) : new Date(proposta.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex flex-col space-y-1">
