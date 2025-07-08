@@ -70,8 +70,8 @@ export default function FaleComConsultorPage() {
               <a
                 href={
                   dadosCliente?.nome && dadosCliente?.planoSelecionado
-                    ? `https://wa.me/5521973244434?text=Olá! Meu nome é ${dadosCliente.nome} e tenho interesse no plano ${dadosCliente.planoSelecionado.nome} da ${dadosCliente.planoSelecionado.operadora}.`
-                    : "https://wa.me/5521973244434?text=Olá! Gostaria de informações sobre planos de saúde."
+                    ? `https://wa.me/5521969564416?text=Olá! Meu nome é ${dadosCliente.nome} e tenho interesse no plano ${dadosCliente.planoSelecionado.nome} da ${dadosCliente.planoSelecionado.operadora}.`
+                    : "https://wa.me/5521969564416?text=Olá! Gostaria de informações sobre planos de saúde."
                 }
                 target="_blank"
                 rel="noopener noreferrer"
@@ -96,7 +96,7 @@ export default function FaleComConsultorPage() {
                       </p>
                     </div>
                     <a
-                      href={`https://wa.me/5521973244434?text=Olá! Meu nome é ${dadosCliente.nome} e tenho interesse no plano ${dadosCliente.planoSelecionado.nome} da ${dadosCliente.planoSelecionado.operadora}.`}
+                      href={`https://wa.me/5521969564416?text=Olá! Meu nome é ${dadosCliente.nome} e tenho interesse no plano ${dadosCliente.planoSelecionado.nome} da ${dadosCliente.planoSelecionado.operadora}.`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center justify-center w-full md:w-auto px-6 py-3 text-base font-bold text-[#168979] bg-white rounded-lg shadow-md hover:bg-yellow-300 transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-white/50"
@@ -124,8 +124,8 @@ export default function FaleComConsultorPage() {
                     <a
                       href={
                         dadosCliente?.nome && dadosCliente?.planoSelecionado
-                          ? `https://wa.me/5521973244434?text=Olá! Meu nome é ${dadosCliente.nome} e tenho interesse no plano ${dadosCliente.planoSelecionado.nome} da ${dadosCliente.planoSelecionado.operadora}.`
-                          : "https://wa.me/5521973244434?text=Olá! Gostaria de informações sobre planos de saúde."
+                          ? `https://wa.me/5521969564416?text=Olá! Meu nome é ${dadosCliente.nome} e tenho interesse no plano ${dadosCliente.planoSelecionado.nome} da ${dadosCliente.planoSelecionado.operadora}.`
+                          : "https://wa.me/5521969564416?text=Olá! Gostaria de informações sobre planos de saúde."
                       }
                       target="_blank"
                       rel="noopener noreferrer"
