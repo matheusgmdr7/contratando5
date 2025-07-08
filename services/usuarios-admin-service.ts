@@ -412,3 +412,20 @@ export class UsuariosAdminService {
 
 // Exportar instância padrão
 export const usuariosAdminService = UsuariosAdminService
+
+export async function buscarUsuariosAdmin() {
+  const res = await UsuariosAdminService.listarUsuarios()
+  if (!res.success) throw new Error(res.message || "Erro ao buscar usuários")
+  return res.usuarios
+}
+
+export async function inicializarSistemaUsuarios() {
+  // Verifica se existe usuário master, e cria se não existir
+  const res = await UsuariosAdminService.verificarUsuariosExistentes()
+  if (!res.success) throw new Error("Erro ao verificar usuários")
+  if (!res.existem) {
+    const criado = await UsuariosAdminService.criarUsuarioPadrao()
+    if (!criado.success) throw new Error(criado.message || "Erro ao criar usuário padrão")
+  }
+  return true
+}
