@@ -4,7 +4,6 @@ import type React from "react"
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase-auth"
 import { Spinner } from "@/components/ui/spinner"
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -16,18 +15,29 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const checkAuth = async () => {
       try {
         console.log("Verificando autenticação")
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-
-        console.log("Sessão encontrada:", session ? "Sim" : "Não")
-        if (!session) {
-          console.log("Redirecionando para login - sem sessão")
-          router.push("/admin/login")
-          return
+        
+        // Verificar se há usuário no localStorage (sistema custom)
+        const usuarioSalvo = localStorage.getItem("adminUser")
+        
+        if (usuarioSalvo) {
+          try {
+            const usuario = JSON.parse(usuarioSalvo)
+            console.log("Usuário encontrado no localStorage:", usuario.email)
+            
+            // Verificar se o usuário tem dados válidos
+            if (usuario && usuario.id && usuario.email) {
+              console.log("Usuário autenticado com sucesso")
+              setIsAuthenticated(true)
+              return
+            }
+          } catch (error) {
+            console.error("Erro ao parsear usuário do localStorage:", error)
+            localStorage.removeItem("adminUser")
+          }
         }
 
-        setIsAuthenticated(true)
+        console.log("Redirecionando para login - sem sessão")
+        router.push("/admin/login")
       } catch (error) {
         console.error("Erro ao verificar autenticação:", error)
         router.push("/admin/login")
@@ -37,30 +47,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     }
 
     checkAuth()
-
-    // Set up auth state change listener
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("Evento de autenticação:", event)
-      if (event === "SIGNED_OUT") {
-        setIsAuthenticated(false)
-        router.push("/admin/login")
-      } else if (event === "SIGNED_IN" && session) {
-        console.log("Usuário autenticado com sucesso")
-        setIsAuthenticated(true)
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
   }, [router])
 
   if (isLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
-        <Spinner size="lg" />
+        <Spinner className="h-8 w-8" />
       </div>
     )
   }
