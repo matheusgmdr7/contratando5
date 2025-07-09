@@ -137,6 +137,15 @@ button.text-\[\#168979\]:hover,
   color: #168979 !important;
 }
 
+/* Canvas de assinatura: elimina padding, border, margin e garante fundo branco */
+.assinatura-canvas {
+  box-sizing: content-box !important;
+  padding: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  background: #fff !important;
+}
+
 /* Melhorias de responsividade */
 .container {
   width: 100%;
