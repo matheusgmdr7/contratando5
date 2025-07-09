@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
-import { validarSenhaUsuarioAdmin } from "@/services/usuarios-admin-service"
+import { signInAdmin } from "@/lib/supabase-auth"
 
 export default function AdminLogin() {
   const router = useRouter()
@@ -29,18 +29,11 @@ export default function AdminLogin() {
     try {
       console.log("Tentando fazer login com:", formData.email)
       
-      // Usar o sistema de usuários admin custom
-      const usuario = await validarSenhaUsuarioAdmin(formData.email, formData.password)
+      await signInAdmin(formData.email, formData.password)
       
-      if (usuario) {
-        console.log("Login bem-sucedido")
-        toast.success("Login realizado com sucesso!")
-        localStorage.setItem("adminUser", JSON.stringify(usuario))
-        window.location.href = "/admin" // Força recarregamento e leitura do localStorage
-      } else {
-        setErrorMessage("Email ou senha incorretos")
-        toast.error("Email ou senha incorretos")
-      }
+      console.log("Login bem-sucedido")
+      toast.success("Login realizado com sucesso!")
+      router.push("/admin")
     } catch (error: any) {
       console.error("Erro de login:", error)
       setErrorMessage(error.message || "Erro ao fazer login")
@@ -50,50 +43,4 @@ export default function AdminLogin() {
     }
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <Card className="w-[400px]">
-        <CardHeader>
-          <CardTitle>Login Administrativo</CardTitle>
-          <CardDescription>Entre com suas credenciais para acessar o painel</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {errorMessage && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Erro</AlertTitle>
-              <AlertDescription>{errorMessage}</AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="seu@email.com"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Entrando..." : "Entrar"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
+// ... existing code ...
