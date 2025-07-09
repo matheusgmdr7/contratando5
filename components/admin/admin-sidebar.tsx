@@ -254,10 +254,10 @@ export default function AdminSidebar() {
                     isActive("/admin/cadastrado") ? "bg-[#13786a] text-white" : "text-white/80 hover:bg-white/10",
                   )}
                   onClick={closeSidebar}
-                  title={isCollapsed ? "Cadastrado" : ""}
+                  title={isCollapsed ? "Cadastrados" : ""}
                 >
                   <UserPlus className="h-4 w-4 flex-shrink-0" />
-                  {!isCollapsed && <span>Cadastrado</span>}
+                  {!isCollapsed && <span>Cadastrados</span>}
                 </Link>
               </li>
 
