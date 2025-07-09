@@ -44,6 +44,15 @@ const formSchema = z.object({
     required_error: "Sexo é obrigatório",
   }),
   uf_nascimento: z.string().min(1, "UF de nascimento é obrigatório"),
+  estado_civil: z.enum([
+    "Solteiro(a)",
+    "Casado(a)",
+    "Divorciado(a)",
+    "Viúvo(a)",
+    "União Estável",
+    "Separado(a)",
+    "Outro"
+  ], { required_error: "Estado civil é obrigatório" }),
 
   // Endereço
   cep: z.string().min(8, "CEP inválido"),
@@ -162,6 +171,7 @@ export default function NovaPropostaPage() {
       tem_dependentes: false,
       dependentes: [],
       observacoes: "",
+      estado_civil: "Solteiro(a)",
     },
   })
 
@@ -621,6 +631,7 @@ export default function NovaPropostaPage() {
         telefone_cliente: data.telefone,
         cns_cliente: data.cns,
         nome_mae_cliente: data.nome_mae,
+        estado_civil: data.estado_civil,
         // Novos campos para exibição correta na etapa 3
         produto_nome: produtoSelecionadoInterno?.nome || "",
         produto_descricao: produtoSelecionadoInterno?.descricao || "",
@@ -1289,6 +1300,33 @@ export default function NovaPropostaPage() {
                           <SelectContent>
                             <SelectItem value="Masculino">Masculino</SelectItem>
                             <SelectItem value="Feminino">Feminino</SelectItem>
+                            <SelectItem value="Outro">Outro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="estado_civil"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Estado Civil</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione o estado civil" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Solteiro(a)">Solteiro(a)</SelectItem>
+                            <SelectItem value="Casado(a)">Casado(a)</SelectItem>
+                            <SelectItem value="Divorciado(a)">Divorciado(a)</SelectItem>
+                            <SelectItem value="Viúvo(a)">Viúvo(a)</SelectItem>
+                            <SelectItem value="União Estável">União Estável</SelectItem>
+                            <SelectItem value="Separado(a)">Separado(a)</SelectItem>
                             <SelectItem value="Outro">Outro</SelectItem>
                           </SelectContent>
                         </Select>
