@@ -262,7 +262,7 @@ export default function AdminSidebar() {
                 </Link>
               </li>
               )}
-              {podeVisualizar("cadastrado") && (
+              {podeVisualizar("cadastrados") && (
               <li>
                 <Link
                   href="/admin/cadastrado"
