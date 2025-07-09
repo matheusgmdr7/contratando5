@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabase-auth"
 import { Spinner } from "@/components/ui/spinner"
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -16,28 +17,17 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       try {
         console.log("Verificando autenticação")
         
-        // Verificar se há usuário no localStorage (sistema custom)
-        const usuarioSalvo = localStorage.getItem("adminUser")
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
         
-        if (usuarioSalvo) {
-          try {
-            const usuario = JSON.parse(usuarioSalvo)
-            console.log("Usuário encontrado no localStorage:", usuario.email)
-            
-            // Verificar se o usuário tem dados válidos
-            if (usuario && usuario.id && usuario.email) {
-              console.log("Usuário autenticado com sucesso")
-              setIsAuthenticated(true)
-              return
-            }
-          } catch (error) {
-            console.error("Erro ao parsear usuário do localStorage:", error)
-            localStorage.removeItem("adminUser")
-          }
+        if (session) {
+          console.log("Usuário autenticado com sucesso")
+          setIsAuthenticated(true)
+        } else {
+          console.log("Redirecionando para login - sem sessão")
+          router.push("/admin/login")
         }
-
-        console.log("Redirecionando para login - sem sessão")
-        router.push("/admin/login")
       } catch (error) {
         console.error("Erro ao verificar autenticação:", error)
         router.push("/admin/login")
