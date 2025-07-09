@@ -52,6 +52,43 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
     }
   }, [showSignatureModal, isMobile])
 
+  // Bloquear scroll/zoom do body enquanto o modal está aberto no mobile
+  useEffect(() => {
+    if (showSignatureModal && isMobile) {
+      document.body.style.overflow = 'hidden'
+      const preventZoom = (e: TouchEvent) => {
+        if (e.touches.length > 1) e.preventDefault()
+      }
+      document.addEventListener('touchmove', preventZoom, { passive: false })
+      return () => {
+        document.body.style.overflow = 'unset'
+        document.removeEventListener('touchmove', preventZoom)
+      }
+    }
+  }, [showSignatureModal, isMobile])
+
+  // Ajustar e resetar o canvas ao abrir o modal
+  useEffect(() => {
+    if (!showSignatureModal) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const dpr = window.devicePixelRatio || 1
+    const width = window.innerWidth
+    const height = window.innerHeight * 0.6
+    canvas.width = width * dpr
+    canvas.height = height * dpr
+    canvas.style.width = `${width}px`
+    canvas.style.height = `${height}px`
+    const ctx = canvas.getContext('2d')
+    if (ctx) ctx.scale(dpr, dpr)
+    ctx?.clearRect(0, 0, canvas.width, canvas.height)
+    if (signaturePreview) {
+      const img = new window.Image()
+      img.onload = () => ctx?.drawImage(img, 0, 0, width, height)
+      img.src = signaturePreview
+    }
+  }, [showSignatureModal])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -110,6 +147,7 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
       clientY = e.clientY
     }
 
+    // Corrigido: não multiplicar por dpr, pois ctx.scale já foi aplicado
     const x = clientX - rect.left
     const y = clientY - rect.top
 
@@ -137,6 +175,7 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
       clientY = e.clientY
     }
 
+    // Corrigido: não multiplicar por dpr, pois ctx.scale já foi aplicado
     const x = clientX - rect.left
     const y = clientY - rect.top
 
@@ -270,13 +309,17 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                 {signaturePreview ? (
                   <div className="flex flex-col items-center">
                     <img src={signaturePreview} alt="Prévia da assinatura" className="border rounded w-full max-w-xs bg-white" />
-                    <Button className="mt-2" onClick={() => setShowSignatureModal(true)}>Refazer Assinatura</Button>
+                    <Button className="mt-2" onClick={() => setShowSignatureModal(true)}>
+                      Refazer Assinatura
+                    </Button>
                   </div>
                 ) : (
-                  <Button onClick={() => setShowSignatureModal(true)}>Assinar</Button>
+                  <Button onClick={() => setShowSignatureModal(true)}>
+                    Assinar
+                  </Button>
                 )}
                 <Dialog open={showSignatureModal} onOpenChange={setShowSignatureModal}>
-                  <DialogContent className="p-0 max-w-full w-screen h-screen flex items-center justify-center bg-white">
+                  <DialogContent className="p-0 max-w-full w-screen h-screen flex items-center justify-center bg-white !rounded-none !shadow-none">
                     <DialogTitle className="sr-only">Assinatura Digital</DialogTitle>
                     <DialogDescription className="sr-only">
                       Área para assinar digitalmente o documento usando o dedo ou caneta
@@ -286,14 +329,6 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                       <div className="flex-shrink-0 bg-white border-b border-gray-200 p-4">
                         <div className="flex items-center justify-between">
                           <h3 className="text-lg font-semibold text-gray-900">Assine aqui</h3>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => setShowSignatureModal(false)}
-                            className="text-gray-500 hover:text-gray-700"
-                          >
-                            ✕
-                          </Button>
                         </div>
                         <p className="text-sm text-gray-600 mt-1">
                           Use o dedo ou caneta para assinar no espaço abaixo
@@ -304,8 +339,18 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                       <div className="flex-1 relative">
                         <canvas
                           ref={canvasRef}
-                          className="w-full h-full border-0 cursor-crosshair bg-white"
-                          style={{height: '100%', width: '100%'}}
+                          className="assinatura-canvas"
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            display: 'block',
+                            padding: 0,
+                            margin: 0,
+                            border: 'none',
+                            background: '#fff',
+                            touchAction: 'none',
+                            boxSizing: 'content-box',
+                          }}
                           onMouseDown={startDrawing}
                           onMouseMove={draw}
                           onMouseUp={stopDrawing}
@@ -332,14 +377,14 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                           <Button 
                             variant="outline" 
                             onClick={clearSignature}
-                            className="flex-1 max-w-[120px]"
+                            className="flex-1 max-w-[140px] py-4 text-base"
                           >
-                            <RotateCcw className="h-4 w-4 mr-2" />
+                            <RotateCcw className="h-5 w-5 mr-2" />
                             Limpar
                           </Button>
                           <Button 
                             onClick={() => saveSignature(true)}
-                            className="flex-1 max-w-[120px]"
+                            className="flex-1 max-w-[140px] py-4 text-base"
                             disabled={!hasSignature}
                           >
                             Salvar
@@ -347,7 +392,7 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                           <Button 
                             variant="outline" 
                             onClick={() => setShowSignatureModal(false)}
-                            className="flex-1 max-w-[120px]"
+                            className="flex-1 max-w-[140px] py-4 text-base"
                           >
                             Cancelar
                           </Button>
@@ -361,7 +406,18 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex justify-center items-center">
                 <canvas
                   ref={canvasRef}
-                  className="w-full h-48 border border-gray-200 rounded cursor-crosshair bg-white"
+                  className="assinatura-canvas"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                    padding: 0,
+                    margin: 0,
+                    border: 'none',
+                    background: '#fff',
+                    touchAction: 'none',
+                    boxSizing: 'content-box',
+                  }}
                   onMouseDown={startDrawing}
                   onMouseMove={draw}
                   onMouseUp={stopDrawing}
