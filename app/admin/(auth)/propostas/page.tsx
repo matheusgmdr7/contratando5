@@ -45,6 +45,7 @@ export default function PropostasPage() {
   const [showModalPDF, setShowModalPDF] = useState(false)
   const [modelosProposta, setModelosProposta] = useState<any[]>([])
   const [modeloSelecionado, setModeloSelecionado] = useState("")
+  const [pdfUrlGerado, setPdfUrlGerado] = useState<string | null>(null)
 
   // Paginação
   const [paginaAtual, setPaginaAtual] = useState(1)
@@ -407,8 +408,7 @@ export default function PropostasPage() {
       // Atualizar a URL do PDF na proposta
       await supabase.from("propostas").update({ pdf_url: pdfUrl }).eq("id", propostaDetalhada.id)
 
-      // Abrir o PDF em nova aba
-      window.open(pdfUrl, "_blank")
+      setPdfUrlGerado(pdfUrl)
 
       toast.success("PDF gerado com sucesso!")
     } catch (error: any) {
@@ -1851,6 +1851,25 @@ export default function PropostasPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {pdfUrlGerado && (
+        <div className="mt-4 text-center">
+          <a
+            href={pdfUrlGerado}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="inline-block px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+          >
+            Baixar PDF Gerado
+          </a>
+          <button
+            className="block mt-2 text-xs text-gray-500 underline"
+            onClick={() => setPdfUrlGerado(null)}
+          >
+            Fechar link
+          </button>
         </div>
       )}
     </div>
