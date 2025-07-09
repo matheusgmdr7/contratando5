@@ -8,6 +8,7 @@ import { useState, useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import { signOutAdmin } from "@/lib/supabase-auth"
 import {
   Menu,
   X,
@@ -27,8 +28,6 @@ import {
   CheckCircle,
   UserPlus,
 } from "lucide-react"
-import { signOutAdmin } from "@/lib/supabase-auth"
-
 export default function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
@@ -39,9 +38,6 @@ export default function AdminSidebar() {
   const avatarUrl = "" // Replace with actual avatar URL if available
   const corretor = { email: "admin@example.com" } // Replace with actual corretor data
   const [isCollapsed, setIsCollapsed] = useState(false)
-  
-  // Hook de permissões
-  const { podeVisualizar, isMaster } = usePermissions()
 
   const getInitials = (name: string | undefined) => {
     if (!name) return ""
@@ -166,7 +162,6 @@ export default function AdminSidebar() {
           </div>
           <nav className="flex-1 overflow-y-auto py-2">
             <ul className="space-y-1">
-              {podeVisualizar("dashboard") && (
               <li>
                 <Link
                   href="/admin"
@@ -181,8 +176,6 @@ export default function AdminSidebar() {
                   {!isCollapsed && <span>Dashboard</span>}
                 </Link>
               </li>
-              )}
-              {podeVisualizar("leads") && (
               <li>
                 <Link
                   href="/admin/leads"
@@ -197,8 +190,6 @@ export default function AdminSidebar() {
                   {!isCollapsed && <span>Leads</span>}
                 </Link>
               </li>
-              )}
-              {podeVisualizar("tabelas") && (
               <li>
                 <Link
                   href="/admin/tabelas"
@@ -213,8 +204,6 @@ export default function AdminSidebar() {
                   {!isCollapsed && <span>Tabelas de Preços</span>}
                 </Link>
               </li>
-              )}
-              {podeVisualizar("modelos-propostas") && (
               <li>
                 <Link
                   href="/admin/modelos-propostas"
@@ -229,8 +218,6 @@ export default function AdminSidebar() {
                   {!isCollapsed && <span>Modelo de Propostas</span>}
                 </Link>
               </li>
-              )}
-              {podeVisualizar("propostas") && (
               <li>
                 <Link
                   href="/admin/propostas"
@@ -245,8 +232,6 @@ export default function AdminSidebar() {
                   {!isCollapsed && <span>Propostas Recebidas</span>}
                 </Link>
               </li>
-              )}
-              {podeVisualizar("em-analise") && (
               <li>
                 <Link
                   href="/admin/em-analise"
@@ -261,8 +246,6 @@ export default function AdminSidebar() {
                   {!isCollapsed && <span>Em Análise</span>}
                 </Link>
               </li>
-              )}
-              {podeVisualizar("cadastrado") && (
               <li>
                 <Link
                   href="/admin/cadastrado"
@@ -271,13 +254,12 @@ export default function AdminSidebar() {
                     isActive("/admin/cadastrado") ? "bg-[#13786a] text-white" : "text-white/80 hover:bg-white/10",
                   )}
                   onClick={closeSidebar}
-                  title={isCollapsed ? "Cadastrados" : ""}
+                  title={isCollapsed ? "Cadastrado" : ""}
                 >
                   <UserPlus className="h-4 w-4 flex-shrink-0" />
-                  {!isCollapsed && <span>Cadastrados</span>}
+                  {!isCollapsed && <span>Cadastrado</span>}
                 </Link>
               </li>
-              )}
 
               {/* Seção de Corretores com expansão/colapso */}
               <li className="pt-3 mt-3">
