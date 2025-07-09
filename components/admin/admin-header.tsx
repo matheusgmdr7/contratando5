@@ -2,10 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase-auth"
 import Link from "next/link"
 import { Settings, User, LogOut } from "lucide-react"
-import { signOutAdmin } from "@/lib/supabase-auth"
 import { Button } from "@/components/ui/button"
 
 export default function AdminHeader() {
@@ -15,25 +13,31 @@ export default function AdminHeader() {
   const router = useRouter()
 
   useEffect(() => {
-    async function getUserInfo() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session) {
+    function getUserInfo() {
+      // Usar o sistema customizado de autenticação
+      const userData = localStorage.getItem('adminUser')
+      if (!userData) {
         router.push("/admin/login")
         return
       }
-      setUserEmail(session.user.email || null)
 
-      // Extrair nome do email (parte antes do @)
-      if (session.user.email) {
-        const namePart = session.user.email.split("@")[0]
-        // Capitalizar primeira letra de cada palavra
-        const formattedName = namePart
-          .split(".")
-          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(" ")
-        setUserName(formattedName)
+      try {
+        const user = JSON.parse(userData)
+        setUserEmail(user.email || null)
+
+        // Extrair nome do email (parte antes do @)
+        if (user.email) {
+          const namePart = user.email.split("@")[0]
+          // Capitalizar primeira letra de cada palavra
+          const formattedName = namePart
+            .split(".")
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(" ")
+          setUserName(formattedName)
+        }
+      } catch (error) {
+        console.error("Erro ao processar dados do usuário:", error)
+        router.push("/admin/login")
       }
     }
     getUserInfo()
@@ -41,7 +45,8 @@ export default function AdminHeader() {
 
   const handleLogout = async () => {
     try {
-      await signOutAdmin()
+      // Limpar dados do localStorage
+      localStorage.removeItem('adminUser')
       router.push("/admin/login")
     } catch (error) {
       console.error("Erro ao fazer logout:", error)
