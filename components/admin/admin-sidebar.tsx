@@ -27,7 +27,7 @@ import {
   CheckCircle,
   UserPlus,
 } from "lucide-react"
-import { usePermissions } from "../../hooks/use-permissions"
+import { usePermissions } from "@/hooks/use-permissions"
 import { signOutAdmin } from "@/lib/supabase-auth"
 
 export default function AdminSidebar() {
