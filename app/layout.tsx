@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: "Encontre o plano de saúde ideal para você e sua família",
   generator: "v0.dev",
   icons: {
-    icon: "https://example.com/path/to/your/favicon.ico",
+    icon: "https://i.ibb.co/sdXM3bth/Post-Feed-e-Logo-6.png",
   },
 }
 
