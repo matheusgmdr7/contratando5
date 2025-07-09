@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, PenTool, RotateCcw, AlertCircle, Smartphone, Mouse, Lock } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import "./assinatura-canvas.css"
 
 interface Step7SignatureProps {
   onNext: () => void
@@ -147,6 +148,7 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
       clientY = e.clientY
     }
 
+    // Corrigido: não multiplicar por dpr, pois ctx.scale já foi aplicado
     const x = clientX - rect.left
     const y = clientY - rect.top
 
@@ -174,6 +176,7 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
       clientY = e.clientY
     }
 
+    // Corrigido: não multiplicar por dpr, pois ctx.scale já foi aplicado
     const x = clientX - rect.left
     const y = clientY - rect.top
 
@@ -327,14 +330,6 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                       <div className="flex-shrink-0 bg-white border-b border-gray-200 p-4">
                         <div className="flex items-center justify-between">
                           <h3 className="text-lg font-semibold text-gray-900">Assine aqui</h3>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => setShowSignatureModal(false)}
-                            className="text-gray-500 hover:text-gray-700"
-                          >
-                            ✕
-                          </Button>
                         </div>
                         <p className="text-sm text-gray-600 mt-1">
                           Use o dedo ou caneta para assinar no espaço abaixo
@@ -345,8 +340,18 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
                       <div className="flex-1 relative">
                         <canvas
                           ref={canvasRef}
-                          className="w-full h-full border-0 cursor-crosshair bg-white touch-none"
-                          style={{height: '100%', width: '100%', touchAction: 'none'}} // touchAction previne scroll/zoom
+                          className="assinatura-canvas"
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            display: 'block',
+                            padding: 0,
+                            margin: 0,
+                            border: 'none',
+                            background: '#fff',
+                            touchAction: 'none',
+                            boxSizing: 'content-box',
+                          }}
                           onMouseDown={startDrawing}
                           onMouseMove={draw}
                           onMouseUp={stopDrawing}
@@ -402,7 +407,18 @@ export default function Step7Signature({ onNext, onPrev, onFinalizar, formData, 
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 flex justify-center items-center">
                 <canvas
                   ref={canvasRef}
-                  className="w-full h-48 border border-gray-200 rounded cursor-crosshair bg-white"
+                  className="assinatura-canvas"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                    padding: 0,
+                    margin: 0,
+                    border: 'none',
+                    background: '#fff',
+                    touchAction: 'none',
+                    boxSizing: 'content-box',
+                  }}
                   onMouseDown={startDrawing}
                   onMouseMove={draw}
                   onMouseUp={stopDrawing}
