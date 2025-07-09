@@ -14,6 +14,8 @@ import { formatarMoeda } from "@/utils/formatters"
 import { UploadService } from "@/services/upload-service"
 import { buscarCorretores } from "@/services/corretores-service"
 import { Textarea } from "@/components/ui/textarea"
+import { obterProdutosCorretores, obterValorProdutoPorIdade } from "@/services/produtos-corretores-service"
+import { buscarTabelasPrecosPorProduto } from "@/services/tabelas-service"
 
 export default function CadastradoPage() {
   const [propostas, setPropostas] = useState<any[]>([])
@@ -25,6 +27,8 @@ export default function CadastradoPage() {
   const [loadingDetalhes, setLoadingDetalhes] = useState(false)
   const [showModalCadastro, setShowModalCadastro] = useState(false)
   const [propostaCadastro, setPropostaCadastro] = useState<any>(null)
+  const [produtos, setProdutos] = useState<any[]>([])
+  const [tabelas, setTabelas] = useState<any[]>([])
 
   // Campos para cadastro
   const [administradora, setAdministradora] = useState("")
@@ -79,6 +83,7 @@ export default function CadastradoPage() {
     data_cadastro: "",
     status: "cadastrado",
     documentos: {},
+    estado_civil: "Solteiro(a)",
   })
   const [uploading, setUploading] = useState(false)
 
@@ -93,8 +98,21 @@ export default function CadastradoPage() {
   useEffect(() => {
     if (showModalCadastroManual) {
       buscarCorretores().then(setCorretoresDisponiveis)
+      obterProdutosCorretores().then(setProdutos)
     }
   }, [showModalCadastroManual])
+
+  useEffect(() => {
+    async function carregarTabelas() {
+      if (formManual.produto_id) {
+        const tabelasProduto = await buscarTabelasPrecosPorProduto(formManual.produto_id)
+        setTabelas(tabelasProduto)
+      } else {
+        setTabelas([])
+      }
+    }
+    carregarTabelas()
+  }, [formManual.produto_id])
 
   async function carregarPropostas() {
     try {
@@ -291,6 +309,7 @@ export default function CadastradoPage() {
           data_cadastro: "",
           status: "cadastrado",
           documentos: {},
+          estado_civil: "Solteiro(a)",
         })
         carregarPropostas()
       } else {
@@ -368,6 +387,77 @@ export default function CadastradoPage() {
   useEffect(() => {
     setPaginaAtual(1)
   }, [filtro, origemFiltro])
+
+  // Estado para exibir nome do produto selecionado
+  const produtoSelecionado = produtos.find((p) => String(p.id) === String(formManual.produto_id))
+
+  // Função para calcular idade
+  function calcularIdade(dataNascimento: string) {
+    if (!dataNascimento) return undefined;
+    const hoje = new Date();
+    const nascimento = new Date(dataNascimento);
+    let idade = hoje.getFullYear() - nascimento.getFullYear();
+    const m = hoje.getMonth() - nascimento.getMonth();
+    if (m < 0 || (m === 0 && hoje.getDate() < nascimento.getDate())) {
+      idade--;
+    }
+    return idade;
+  }
+
+  // Cálculo automático do valor
+  useEffect(() => {
+    async function calcularValorAutomatico() {
+      if (formManual.produto_id && formManual.data_nascimento) {
+        const idade = calcularIdade(formManual.data_nascimento)
+        if (!idade || isNaN(idade)) return;
+        let valor = 0;
+        if (formManual.tabela_id) {
+          // Buscar valor pela tabela selecionada
+          const { data: faixas, error } = await supabase
+            .from("tabelas_precos_faixas")
+            .select("faixa_etaria, valor")
+            .eq("tabela_id", formManual.tabela_id)
+            .order("faixa_etaria", { ascending: true })
+          if (!error && faixas && faixas.length > 0) {
+            for (const faixa of faixas) {
+              if (faixa.faixa_etaria.includes("-")) {
+                const [minStr, maxStr] = faixa.faixa_etaria.split("-")
+                const min = Number.parseInt(minStr.trim(), 10)
+                const max = Number.parseInt(maxStr.trim(), 10)
+                if (!isNaN(min) && !isNaN(max) && idade >= min && idade <= max) {
+                  valor = Number.parseFloat(faixa.valor) || 0
+                  break
+                }
+              } else if (faixa.faixa_etaria.endsWith("+")) {
+                const minStr = faixa.faixa_etaria.replace("+", "").trim()
+                const min = Number.parseInt(minStr, 10)
+                if (!isNaN(min) && idade >= min) {
+                  valor = Number.parseFloat(faixa.valor) || 0
+                  break
+                }
+              } else {
+                const idadeExata = Number.parseInt(faixa.faixa_etaria.trim(), 10)
+                if (!isNaN(idadeExata) && idade === idadeExata) {
+                  valor = Number.parseFloat(faixa.valor) || 0
+                  break
+                }
+              }
+            }
+          }
+        } else {
+          valor = await obterValorProdutoPorIdade(formManual.produto_id, idade)
+        }
+        if (valor > 0) {
+          setFormManual((prev) => ({ ...prev, valor: formatarMoeda(valor) }))
+        } else {
+          setFormManual((prev) => ({ ...prev, valor: "" }))
+          toast.warning("Não foi possível calcular o valor automaticamente. Informe o valor manualmente.")
+        }
+      }
+    }
+    calcularValorAutomatico()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formManual.produto_id, formManual.tabela_id, formManual.data_nascimento])
 
   if (loading) {
     return (
@@ -839,6 +929,22 @@ export default function CadastradoPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {/* Estado Civil */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Estado Civil *</label>
+                    <Select value={formManual.estado_civil || "Solteiro(a)"} onValueChange={v => setFormManual({ ...formManual, estado_civil: v })} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Solteiro(a)">Solteiro(a)</SelectItem>
+                        <SelectItem value="Casado(a)">Casado(a)</SelectItem>
+                        <SelectItem value="Divorciado(a)">Divorciado(a)</SelectItem>
+                        <SelectItem value="Viúvo(a)">Viúvo(a)</SelectItem>
+                        <SelectItem value="União Estável">União Estável</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">UF de Nascimento *</label>
                     <Input value={formManual.uf_nascimento} onChange={e => setFormManual({ ...formManual, uf_nascimento: e.target.value })} required />
@@ -887,11 +993,34 @@ export default function CadastradoPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Produto *</label>
-                    <Input value={formManual.produto_id} onChange={e => setFormManual({ ...formManual, produto_id: e.target.value })} required />
+                    <Select value={formManual.produto_id} onValueChange={v => setFormManual({ ...formManual, produto_id: v, tabela_id: "" })} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o produto">
+                          {produtoSelecionado ? produtoSelecionado.nome : undefined}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {produtos.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Tabela de Preços</label>
-                    <Input value={formManual.tabela_id} onChange={e => setFormManual({ ...formManual, tabela_id: e.target.value })} />
+                    <Select value={formManual.tabela_id} onValueChange={v => setFormManual({ ...formManual, tabela_id: v })} disabled={!formManual.produto_id || tabelas.length === 0}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a tabela" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tabelas.map((t) => (
+                          <SelectItem key={t.tabela_id} value={t.tabela_id}>
+                            {t.tabela_titulo} - {t.segmentacao}
+                            {t.descricao ? ` (${t.descricao})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Cobertura *</label>
