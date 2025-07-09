@@ -116,6 +116,15 @@ export default function CadastradoPage() {
     carregarTabelas()
   }, [formManual.produto_id])
 
+  useEffect(() => {
+    if (propostas.length > 0) {
+      console.log('Propostas exibidas:', propostas.map(p => ({ id: p.id, produto_id: p.produto_id })))
+    }
+    if (produtos.length > 0) {
+      console.log('Produtos carregados:', produtos.map(p => ({ id: p.id, nome: p.nome })))
+    }
+  }, [propostas, produtos])
+
   async function carregarPropostas() {
     try {
       setLoading(true)
@@ -218,6 +227,8 @@ export default function CadastradoPage() {
       }
 
       // Criar proposta manualmente com todos os dados (sem anexos/anexosDependentes)
+      const produtoSelecionado = produtos.find((p) => String(p.id) === String(formManual.produto_id));
+      const produto_nome = produtoSelecionado ? produtoSelecionado.nome : "";
       const propostaId = await criarProposta({
         // Dados do titular
         nome: formManual.nome,
@@ -241,6 +252,7 @@ export default function CadastradoPage() {
         estado: formManual.estado,
         // Dados do plano
         produto_id: formManual.produto_id,
+        produto_nome, // <-- Salva o nome do produto!
         cobertura: formManual.cobertura,
         acomodacao: formManual.acomodacao,
         sigla_plano: formManual.sigla_plano,
@@ -424,42 +436,8 @@ export default function CadastradoPage() {
         const idade = calcularIdade(formManual.data_nascimento)
         if (!idade || isNaN(idade)) return;
         let valor = 0;
-        if (formManual.tabela_id) {
-          // Buscar valor pela tabela selecionada
-          const { data: faixas, error } = await supabase
-            .from("tabelas_precos_faixas")
-            .select("faixa_etaria, valor")
-            .eq("tabela_id", formManual.tabela_id)
-            .order("faixa_etaria", { ascending: true })
-          if (!error && faixas && faixas.length > 0) {
-            for (const faixa of faixas) {
-              if (faixa.faixa_etaria.includes("-")) {
-                const [minStr, maxStr] = faixa.faixa_etaria.split("-")
-                const min = Number.parseInt(minStr.trim(), 10)
-                const max = Number.parseInt(maxStr.trim(), 10)
-                if (!isNaN(min) && !isNaN(max) && idade >= min && idade <= max) {
-                  valor = Number.parseFloat(faixa.valor) || 0
-                  break
-                }
-              } else if (faixa.faixa_etaria.endsWith("+")) {
-                const minStr = faixa.faixa_etaria.replace("+", "").trim()
-                const min = Number.parseInt(minStr, 10)
-                if (!isNaN(min) && idade >= min) {
-                  valor = Number.parseFloat(faixa.valor) || 0
-                  break
-                }
-              } else {
-                const idadeExata = Number.parseInt(faixa.faixa_etaria.trim(), 10)
-                if (!isNaN(idadeExata) && idade === idadeExata) {
-                  valor = Number.parseFloat(faixa.valor) || 0
-                  break
-                }
-              }
-            }
-          }
-        } else {
-          valor = await obterValorProdutoPorIdade(formManual.produto_id, idade)
-        }
+        // Remover uso de formManual.tabela_id
+        valor = await obterValorProdutoPorIdade(formManual.produto_id, idade)
         if (valor > 0) {
           setFormManual((prev) => ({ ...prev, valor: formatarMoeda(valor) }))
         } else {
@@ -470,7 +448,7 @@ export default function CadastradoPage() {
     }
     calcularValorAutomatico()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formManual.produto_id, formManual.tabela_id, formManual.data_nascimento])
+  }, [formManual.produto_id, formManual.data_nascimento])
 
   // Função para formatar CPF
   function formatarCpfInput(e: React.ChangeEvent<HTMLInputElement>) {
@@ -549,6 +527,28 @@ export default function CadastradoPage() {
   }
 
   const corretorSelecionado = corretoresDisponiveis.find((c) => String(c.id) === String(formManual.corretor_id))
+
+  // Função utilitária para obter o nome do produto pelo ID
+  function obterNomeProduto(produtoId: any) {
+    if (!produtoId) return 'Não informado';
+    const produto = produtos.find((p) => String(p.id) === String(produtoId));
+    return produto ? produto.nome : `ID: ${produtoId}`;
+  }
+
+  // Função utilitária para obter o valor do plano
+  function obterValorProposta(proposta: any) {
+    // Tenta os campos mais comuns
+    if (proposta.valor && !isNaN(Number(String(proposta.valor).replace(/[^\d,\.]/g, '').replace(',', '.')))) {
+      return Number(String(proposta.valor).replace(/[^\d,\.]/g, '').replace(',', '.'))
+    }
+    if (proposta.valor_total && !isNaN(Number(String(proposta.valor_total).replace(/[^\d,\.]/g, '').replace(',', '.')))) {
+      return Number(String(proposta.valor_total).replace(/[^\d,\.]/g, '').replace(',', '.'))
+    }
+    if (proposta.valor_mensal && !isNaN(Number(String(proposta.valor_mensal).replace(/[^\d,\.]/g, '').replace(',', '.')))) {
+      return Number(String(proposta.valor_mensal).replace(/[^\d,\.]/g, '').replace(',', '.'))
+    }
+    return null
+  }
 
   return (
     <div className="space-y-6">
@@ -711,9 +711,12 @@ export default function CadastradoPage() {
                   </td>
                   <td className="px-4 py-4">
                     <div className="text-sm text-gray-900">
-                      {proposta.valor
-                        ? formatarMoeda(Number(String(proposta.valor).replace(/[^\d,\.]/g, '').replace(',', '.')))
+                      {obterValorProposta(proposta) !== null
+                        ? formatarMoeda(obterValorProposta(proposta) as number)
                         : "Valor não informado"}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {proposta.produto_nome || obterNomeProduto(proposta.produto_id)}
                     </div>
                     <div className="text-xs text-gray-500">
                       {proposta.created_at ? new Date(proposta.created_at).toLocaleDateString("pt-BR") : ""}
@@ -924,10 +927,10 @@ export default function CadastradoPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label className="text-sm font-medium text-gray-700">Produto</label><p className="text-gray-900">{propostaDetalhada.produto_id || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Produto</label><p className="text-gray-900">{propostaDetalhada.produto_nome || obterNomeProduto(propostaDetalhada.produto_id)}</p></div>
                         <div><label className="text-sm font-medium text-gray-700">Cobertura</label><p className="text-gray-900">{propostaDetalhada.cobertura || "Não informado"}</p></div>
                         <div><label className="text-sm font-medium text-gray-700">Acomodação</label><p className="text-gray-900">{propostaDetalhada.acomodacao || "Não informado"}</p></div>
-                        <div><label className="text-sm font-medium text-gray-700">Valor</label><p className="text-2xl font-bold text-green-600">{propostaDetalhada.valor ? formatarMoeda(Number(String(propostaDetalhada.valor).replace(/[^\d,\.]/g, '').replace(',', '.'))) : "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Valor</label><p className="text-2xl font-bold text-green-600">{obterValorProposta(propostaDetalhada) !== null ? formatarMoeda(obterValorProposta(propostaDetalhada) as number) : "Não informado"}</p></div>
                         <div><label className="text-sm font-medium text-gray-700">Administradora</label><p className="text-gray-900">{propostaDetalhada.administradora || "Não informado"}</p></div>
                         <div><label className="text-sm font-medium text-gray-700">Data de Vigência</label><p className="text-gray-900">{propostaDetalhada.data_vigencia ? new Date(propostaDetalhada.data_vigencia).toLocaleDateString("pt-BR") : "Não informado"}</p></div>
                         <div><label className="text-sm font-medium text-gray-700">Data de Vencimento</label><p className="text-gray-900">{propostaDetalhada.data_vencimento ? new Date(propostaDetalhada.data_vencimento).toLocaleDateString("pt-BR") : "Não informado"}</p></div>
@@ -943,15 +946,15 @@ export default function CadastradoPage() {
                     <CardContent>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {propostaDetalhada.documentos_urls && Object.keys(propostaDetalhada.documentos_urls).length > 0 ? (
-                          Object.entries(propostaDetalhada.documentos_urls).map(([tipo, url]: [string, string]) => (
+                          Object.entries(propostaDetalhada.documentos_urls).map(([tipo, url]) => (
                             <div key={tipo} className="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
                               <div>
                                 <div className="font-medium text-sm text-gray-900">{tipo.replace(/_/g, ' ').toUpperCase()}</div>
-                                <div className="text-xs text-gray-500">{url.split('.').pop()?.toUpperCase()}</div>
+                                <div className="text-xs text-gray-500">{String(url).split('.').pop()?.toUpperCase()}</div>
                               </div>
                               <div className="flex gap-2">
-                                <button onClick={() => window.open(url, '_blank')} className="text-blue-600 hover:underline text-xs">Visualizar</button>
-                                <a href={url} download target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline text-xs">Baixar</a>
+                                <button onClick={() => window.open(String(url), '_blank')} className="text-blue-600 hover:underline text-xs">Visualizar</button>
+                                <a href={String(url)} download target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline text-xs">Baixar</a>
                               </div>
                             </div>
                           ))
