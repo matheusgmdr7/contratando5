@@ -10,7 +10,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, PenTool, RotateCcw, AlertCircle, Smartphone, Mouse, Lock } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import "./assinatura-canvas.css"
 
 interface Step7SignatureProps {
   onNext: () => void
