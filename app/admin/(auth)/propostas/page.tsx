@@ -1,51 +1,93 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import {
-  buscarPropostas,
-  atualizarStatusProposta,
-  enviarValidacaoEmail,
-  buscarDependentesProposta,
-  buscarQuestionarioSaude,
-  buscarPropostaCompleta,
-  obterDocumentosInteligente,
-  obterNomeCliente,
-  obterEmailCliente,
-  obterTelefoneCliente,
-  obterValorProposta,
-} from "@/services/propostas-service-unificado"
-import { downloadPropostaComDocumentos } from "@/services/download-service"
-import { gerarPDFCompleto, gerarPDFSimples } from "@/services/pdf-completo-service"
-import { toast } from "sonner"
-import { ChevronLeft, ChevronRight, Download, Eye, FileText, Heart } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { buscarPropostas, atualizarStatusProposta } from "@/services/propostas-service-unificado"
+import { criarProposta } from "@/services/propostas-service-unificado"
 import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Eye, CheckCircle, Calendar, Building, Search, Filter, RefreshCw, Save } from "lucide-react"
+import { formatarMoeda } from "@/utils/formatters"
+import { UploadService } from "@/services/upload-service"
+import { buscarCorretores } from "@/services/corretores-service"
+import { Textarea } from "@/components/ui/textarea"
+import { obterProdutosCorretores, obterValorProdutoPorIdade } from "@/services/produtos-corretores-service"
+import { buscarTabelasPrecosPorProduto } from "@/services/tabelas-service"
+import { validarCPF } from "@/utils/validacoes"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-export default function PropostasPage() {
+export default function CadastradoPage() {
   const [propostas, setPropostas] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState("")
-  const [statusFiltro, setStatusFiltro] = useState("todos")
   const [origemFiltro, setOrigemFiltro] = useState("todas")
   const [propostaDetalhada, setPropostaDetalhada] = useState<any>(null)
-  const [dependentes, setDependentes] = useState<any[]>([])
-  const [questionariosSaude, setQuestionariosSaude] = useState<any[]>([])
-  const [motivoRejeicao, setMotivoRejeicao] = useState("")
-  const [showModalRejeicao, setShowModalRejeicao] = useState(false)
   const [showModalDetalhes, setShowModalDetalhes] = useState(false)
-  const [enviandoEmail, setEnviandoEmail] = useState(null)
   const [loadingDetalhes, setLoadingDetalhes] = useState(false)
-  const [downloadingZip, setDownloadingZip] = useState(false)
-  const [generatingPdf, setGeneratingPdf] = useState(false)
-  const [downloadingDoc, setDownloadingDoc] = useState(null)
-  const [showModalPDF, setShowModalPDF] = useState(false)
-  const [modelosProposta, setModelosProposta] = useState<any[]>([])
-  const [modeloSelecionado, setModeloSelecionado] = useState("")
-  const [pdfUrlGerado, setPdfUrlGerado] = useState<string | null>(null)
+  const [showModalCadastro, setShowModalCadastro] = useState(false)
+  const [propostaCadastro, setPropostaCadastro] = useState<any>(null)
+  const [produtos, setProdutos] = useState<any[]>([])
+  const [tabelas, setTabelas] = useState<any[]>([])
+  const [tabelaSelecionada, setTabelaSelecionada] = useState("");
+
+  // Campos para cadastro
+  const [administradora, setAdministradora] = useState("")
+  const [dataVencimento, setDataVencimento] = useState("")
+  const [dataVigencia, setDataVigencia] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  // Estado para modal de cadastro manual
+  const [showModalCadastroManual, setShowModalCadastroManual] = useState(false)
+  const [corretoresDisponiveis, setCorretoresDisponiveis] = useState<any[]>([])
+  const [formManual, setFormManual] = useState({
+    nome: "",
+    email: "",
+    telefone: "",
+    cpf: "",
+    data_nascimento: "",
+    cns: "",
+    rg: "",
+    orgao_emissor: "",
+    nome_mae: "",
+    sexo: "Masculino",
+    uf_nascimento: "SP",
+    cep: "",
+    endereco: "",
+    numero: "",
+    complemento: "",
+    bairro: "",
+    cidade: "",
+    estado: "",
+    produto_id: "",
+    cobertura: "Nacional",
+    acomodacao: "Enfermaria",
+    sigla_plano: "",
+    valor: "",
+    tem_dependentes: false,
+    dependentes: [] as any[],
+    anexos: {
+      rg_frente: null as File | null,
+      rg_verso: null as File | null,
+      cpf: null as File | null,
+      comprovante_residencia: null as File | null,
+      cns: null as File | null,
+    },
+    anexosDependentes: [] as any[],
+    observacoes: "",
+    corretor_id: "",
+    administradora: "",
+    produto: "",
+    data_vigencia: "",
+    data_vencimento: "",
+    data_cadastro: "",
+    status: "cadastrado",
+    documentos: {},
+    estado_civil: "Solteiro(a)",
+  })
+  const [uploading, setUploading] = useState(false)
 
   // Paginação
   const [paginaAtual, setPaginaAtual] = useState(1)
@@ -53,16 +95,36 @@ export default function PropostasPage() {
 
   useEffect(() => {
     carregarPropostas()
-    carregarModelosProposta()
   }, [])
+
+  useEffect(() => {
+    if (showModalCadastroManual) {
+      buscarCorretores().then(setCorretoresDisponiveis)
+      obterProdutosCorretores().then(setProdutos)
+    }
+  }, [showModalCadastroManual])
+
+  useEffect(() => {
+    async function carregarTabelas() {
+      if (formManual.produto_id) {
+        const tabelasProduto = await buscarTabelasPrecosPorProduto(formManual.produto_id)
+        setTabelas(tabelasProduto)
+      } else {
+        setTabelas([])
+      }
+    }
+    carregarTabelas()
+  }, [formManual.produto_id])
 
   async function carregarPropostas() {
     try {
       setLoading(true)
-      console.log("🔄 Carregando propostas UNIFICADAS...")
+      console.log("🔄 Carregando propostas aprovadas...")
       const data = await buscarPropostas()
-      console.log("📊 Propostas carregadas:", data.length)
-      setPropostas(data)
+      // Filtrar apenas propostas com status "aprovada"
+      const propostasExibidas = data.filter((p: any) => p.status === "aprovada" || p.status === "cadastrado")
+      console.log("📊 Propostas exibidas (aprovada + cadastrado):", propostasExibidas.length)
+      setPropostas(propostasExibidas)
     } catch (error: any) {
       console.error("❌ Erro ao carregar propostas:", error)
       toast.error("Erro ao carregar propostas")
@@ -71,787 +133,212 @@ export default function PropostasPage() {
     }
   }
 
-  async function carregarModelosProposta() {
-    try {
-      const { PDFService } = await import("@/services/pdf-service")
-      const modelos = await PDFService.buscarModelos()
-      
-      setModelosProposta(modelos)
-      if (modelos && modelos.length > 0) {
-        setModeloSelecionado(modelos[0].id)
-      }
-    } catch (error) {
-      console.error("Erro ao carregar modelos:", error)
-      toast.error("Erro ao carregar modelos de proposta")
-    }
-  }
-
-  // NOVO: Função para parsear dependentes igual à página de sucesso
-  function parseDependentes(proposta: any) {
-    let dependentesArr: any[] = []
-    if (proposta.dependentes_dados && Array.isArray(proposta.dependentes_dados) && proposta.dependentes_dados.length > 0) {
-      dependentesArr = proposta.dependentes_dados
-    } else if (typeof proposta.dependentes === "string" && proposta.dependentes && proposta.dependentes.length > 0) {
-      try {
-        dependentesArr = JSON.parse(proposta.dependentes)
-      } catch {}
-    } else if (Array.isArray(proposta.dependentes) && proposta.dependentes && proposta.dependentes.length > 0) {
-      dependentesArr = proposta.dependentes
-    }
-    return dependentesArr
-  }
-
-  // NOVO: Função para calcular valor total mensal (titular + dependentes)
-  function calcularValorTotalMensal(proposta: any) {
-    let total = 0
-    let valorTitular = proposta.valor_mensal || proposta.valor || proposta.valor_total || 0
-    if (typeof valorTitular !== "number") {
-      valorTitular = String(valorTitular).replace(/[^\d,\.]/g, "").replace(",", ".")
-      valorTitular = Number.parseFloat(valorTitular)
-    }
-    if (!isNaN(valorTitular) && valorTitular > 0) {
-      total += valorTitular
-    }
-    const dependentesArr = parseDependentes(proposta)
-    if (dependentesArr && dependentesArr.length > 0) {
-      dependentesArr.forEach((dep: any) => {
-        let valorDep = dep.valor_individual || dep.valor || dep.valor_plano || 0
-        if (typeof valorDep !== "number") {
-          valorDep = String(valorDep).replace(/[^\d,\.]/g, "").replace(",", ".")
-          valorDep = Number.parseFloat(valorDep)
-        }
-        if (!isNaN(valorDep) && valorDep > 0) {
-          total += valorDep
-        }
-      })
-    }
-    
-    console.log(`🔍 DEBUG calcularValorTotalMensal - Proposta ${proposta.id}:`, {
-      valorTitular: proposta.valor_mensal || proposta.valor || proposta.valor_total,
-      dependentes: dependentesArr?.length || 0,
-      totalCalculado: total
-    })
-    
-    return total
-  }
-
-  async function carregarDetalhesCompletos(proposta: any) {
-    try {
-      setLoadingDetalhes(true)
-      console.log("🔍 CARREGANDO DETALHES COMPLETOS - UNIFICADO")
-      console.log("=".repeat(60))
-      console.log("📋 Proposta ID:", proposta.id)
-      console.log("📋 Origem:", proposta.origem)
-
-      // 1. Buscar dados completos da proposta
-      const propostaCompleta = await buscarPropostaCompleta(proposta.id)
-      setPropostaDetalhada(propostaCompleta as any)
-
-      // 2. Carregar dependentes
-      let dependentesData = await buscarDependentesProposta(proposta.id)
-      if (!dependentesData || dependentesData.length === 0) {
-        // Tentar parsear do campo dependentes
-        dependentesData = parseDependentes(proposta)
-      }
-      setDependentes(dependentesData)
-
-      // 3. Buscar questionários de saúde (centralizado)
-      let questionariosData = []
-      
-      // Primeiro tentar buscar na tabela questionario_respostas
-      const { data: questionariosRespostas, error: errorQuestionariosRespostas } = await supabase
-        .from("questionario_respostas")
-        .select("*, respostas_questionario(*)")
-        .eq("proposta_id", proposta.id)
-      
-      if (!errorQuestionariosRespostas && questionariosRespostas && questionariosRespostas.length > 0) {
-        console.log("✅ Questionário encontrado em questionario_respostas:", questionariosRespostas.length)
-        questionariosData = questionariosRespostas
-        
-        // Extrair peso e altura do questionário do titular
-        const questionarioTitular = questionariosRespostas.find(q => q.pessoa_tipo === "titular")
-        if (questionarioTitular && propostaCompleta) {
-          console.log("📏 Dados físicos do titular encontrados:", {
-            peso: questionarioTitular.peso,
-            altura: questionarioTitular.altura
-          })
-          // Adicionar peso e altura à proposta
-          propostaCompleta.peso = questionarioTitular.peso || propostaCompleta.peso
-          propostaCompleta.altura = questionarioTitular.altura || propostaCompleta.altura
-          setPropostaDetalhada(propostaCompleta)
-        }
-        
-        // Extrair peso e altura dos questionários dos dependentes
-        if (dependentesData && dependentesData.length > 0) {
-          dependentesData.forEach((dependente, index) => {
-            const questionarioDependente = questionariosRespostas.find(q => 
-              q.pessoa_tipo === "dependente" && q.pessoa_nome === dependente.nome
-            )
-            if (questionarioDependente) {
-              console.log(`📏 Dados físicos do dependente ${dependente.nome}:`, {
-                peso: questionarioDependente.peso,
-                altura: questionarioDependente.altura
-              })
-              dependente.peso = questionarioDependente.peso || dependente.peso
-              dependente.altura = questionarioDependente.altura || dependente.altura
-            }
-          })
-          setDependentes([...dependentesData])
-        }
-      } else {
-        console.log("ℹ️ Nenhum questionário em questionario_respostas, tentando questionario_saude...")
-        
-        // Fallback para a tabela questionario_saude
-        const { data: questionariosSaude, error: errorQuestionariosSaude } = await supabase
-          .from("questionario_saude")
-          .select("*")
-          .eq("proposta_id", proposta.id)
-          .order("pergunta_id", { ascending: true })
-        
-        if (!errorQuestionariosSaude && questionariosSaude && questionariosSaude.length > 0) {
-          console.log("✅ Questionário encontrado em questionario_saude:", questionariosSaude.length)
-          questionariosData = questionariosSaude
-        } else {
-          console.log("ℹ️ Nenhum questionário encontrado em nenhuma tabela")
-        }
-      }
-      
-      // Buscar questionários dos dependentes também
-      if (dependentesData && dependentesData.length > 0) {
-        console.log("🔍 Buscando questionários dos dependentes...")
-        
-        for (const dependente of dependentesData) {
-          try {
-            console.log(`🔍 Buscando questionário para dependente: ${dependente.nome} (ID: ${dependente.id})`)
-            
-            // Buscar na tabela questionario_saude com dependente_id
-            const { data: questionarioDependente, error: errorQuestionarioDependente } = await supabase
-              .from("questionario_saude")
-              .select("*")
-              .eq("proposta_id", proposta.id)
-              .eq("dependente_id", dependente.id)
-              .order("pergunta_id", { ascending: true })
-            
-            if (!errorQuestionarioDependente && questionarioDependente && questionarioDependente.length > 0) {
-              console.log(`✅ Questionário do dependente ${dependente.nome} encontrado em questionario_saude:`, questionarioDependente.length, "respostas")
-              console.log("📋 Detalhes do questionário:", questionarioDependente)
-              questionariosData.push(...questionarioDependente)
-            } else {
-              console.log(`ℹ️ Nenhum questionário encontrado em questionario_saude para dependente ${dependente.nome}`)
-            }
-            
-            // Buscar também na tabela questionario_respostas para dependentes
-            const { data: questionarioRespostasDependente, error: errorQuestionarioRespostasDependente } = await supabase
-              .from("questionario_respostas")
-              .select("*, respostas_questionario(*)")
-              .eq("proposta_id", proposta.id)
-              .eq("pessoa_tipo", "dependente")
-              .eq("pessoa_nome", dependente.nome)
-            
-            if (!errorQuestionarioRespostasDependente && questionarioRespostasDependente && questionarioRespostasDependente.length > 0) {
-              console.log(`✅ Questionário do dependente ${dependente.nome} encontrado em questionario_respostas:`, questionarioRespostasDependente.length, "registros")
-              console.log("📋 Detalhes do questionário:", questionarioRespostasDependente)
-              questionariosData.push(...questionarioRespostasDependente)
-            } else {
-              console.log(`ℹ️ Nenhum questionário encontrado em questionario_respostas para dependente ${dependente.nome}`)
-            }
-          } catch (err) {
-            console.log(`⚠️ Erro ao buscar questionário do dependente ${dependente.nome}:`, err)
-          }
-        }
-      }
-      
-      setQuestionariosSaude(questionariosData)
-
-      console.log("🎉 CARREGAMENTO COMPLETO FINALIZADO!")
-    } catch (error: any) {
-      console.error("❌ ERRO GERAL AO CARREGAR DETALHES:", error)
-      toast.error("Erro ao carregar detalhes da proposta: " + error.message)
-    } finally {
-      setLoadingDetalhes(false)
-    }
-  }
-
-  async function baixarDocumentoIndividual(url: any, nomeArquivo: any) {
-    try {
-      setDownloadingDoc(nomeArquivo)
-
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error(`Erro ao baixar arquivo: ${response.status}`)
-      }
-
-      const blob = await response.blob()
-      const downloadUrl = URL.createObjectURL(blob)
-
-      const link = document.createElement("a")
-      link.href = downloadUrl
-      link.download = nomeArquivo
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(downloadUrl)
-
-      toast.success(`${nomeArquivo} baixado com sucesso!`)
-    } catch (error: any) {
-      console.error("❌ Erro ao baixar documento:", error)
-      toast.error(`Erro ao baixar ${nomeArquivo}`)
-    } finally {
-      setDownloadingDoc(null)
-    }
-  }
-
-  async function baixarTudoZip() {
-    if (!propostaDetalhada) return
-
-    try {
-      setDownloadingZip(true)
-      const nomeCliente = obterNomeCliente(propostaDetalhada)
-      const documentosUrls = obterDocumentosInteligente(propostaDetalhada, "titular")
-      const pdfUrl = propostaDetalhada.pdf_url
-
-      const documentosDependentes: Record<string, any> = {}
-      dependentes.forEach((dep: any, index: number) => {
-        const docsDependendente = obterDocumentosInteligente(dep, "dependente")
-        Object.entries(docsDependendente).forEach(([tipo, url]) => {
-          documentosDependentes[`dependente_${index + 1}_${tipo}`] = url
-        })
-      })
-
-      const todosDocumentos = { ...documentosUrls, ...documentosDependentes }
-
-      if (!pdfUrl && Object.keys(todosDocumentos).length === 0) {
-        toast.error("Nenhum documento disponível para download")
-        return
-      }
-
-      await downloadPropostaComDocumentos(propostaDetalhada.id, nomeCliente, todosDocumentos, pdfUrl)
-      toast.success("Download ZIP iniciado com sucesso!")
-    } catch (error: any) {
-      console.error("❌ Erro ao baixar ZIP:", error)
-      toast.error("Erro ao gerar arquivo ZIP: " + error.message)
-    } finally {
-      setDownloadingZip(false)
-    }
-  }
-
-  async function gerarPDFCompletoAction() {
-    if (!propostaDetalhada) return
-
-    try {
-      setGeneratingPdf(true)
-      const nomeCliente = obterNomeCliente(propostaDetalhada)
-      const documentosUrls = obterDocumentosInteligente(propostaDetalhada, "titular")
-      const pdfUrl = propostaDetalhada.pdf_url
-
-      if (!pdfUrl) {
-        toast.error("PDF da proposta não disponível")
-        return
-      }
-
-      let pdfBlob
-      try {
-        pdfBlob = await gerarPDFCompleto(propostaDetalhada.id, nomeCliente, documentosUrls, pdfUrl)
-      } catch (error) {
-        console.warn("⚠️ Falha na geração completa, tentando PDF simples...")
-        pdfBlob = await gerarPDFSimples(propostaDetalhada.id, nomeCliente, documentosUrls, pdfUrl)
-      }
-
-      const url = URL.createObjectURL(pdfBlob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `Proposta_Completa_${nomeCliente.replace(/[^a-zA-Z0-9]/g, "_")}_${obterIdSeguro(propostaDetalhada).substring(0, 8)}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-
-      toast.success("PDF completo gerado com sucesso!")
-    } catch (error: any) {
-      console.error("❌ Erro ao gerar PDF completo:", error)
-      toast.error("Erro ao gerar PDF completo: " + error.message)
-    } finally {
-      setGeneratingPdf(false)
-    }
-  }
-
-  async function gerarPDFComModelo() {
-    if (!propostaDetalhada || !modeloSelecionado) {
-      toast.error("Selecione um modelo de proposta")
+  async function finalizarCadastro() {
+    if (!propostaCadastro || !administradora || !dataVencimento || !dataVigencia) {
+      toast.error("Preencha todos os campos obrigatórios")
       return
     }
 
     try {
-      setGeneratingPdf(true)
-      setShowModalPDF(false)
-
-      // Importar o serviço de PDF
-      const { PDFService } = await import("@/services/pdf-service")
-
-      // Preparar dados da proposta para o PDF
-      const dadosParaPreenchimento = prepararDadosParaPreenchimento(propostaDetalhada, dependentes, questionariosSaude)
-
-      // Gerar o nome do arquivo
-      const nomeCliente = obterNomeCliente(propostaDetalhada)
-
-      // Gerar PDF usando o modelo selecionado
-      const pdfUrl = await PDFService.gerarPDFComModelo(
-        modeloSelecionado,
-        dadosParaPreenchimento,
-        nomeCliente
-      )
-
-      if (!pdfUrl) {
-        throw new Error("Falha ao gerar URL do PDF")
-      }
-
-      // Atualizar a URL do PDF na proposta
-      await supabase.from("propostas").update({ pdf_url: pdfUrl }).eq("id", propostaDetalhada.id)
-
-      setPdfUrlGerado(pdfUrl)
-
-      toast.success("PDF gerado com sucesso!")
-    } catch (error: any) {
-      console.error("Erro ao gerar PDF:", error)
-      toast.error("Erro ao gerar PDF: " + error.message)
-    } finally {
-      setGeneratingPdf(false)
-    }
-  }
-
-  function prepararDadosParaPreenchimento(proposta: any, dependentes: any[] = [], questionario: any[] = []) {
-    // Função auxiliar para calcular idade
-    function calcularIdade(dataNascimento: any) {
-      if (!dataNascimento) return ""
-      const hoje = new Date()
-      const nascimento = new Date(dataNascimento)
-      let idade = hoje.getFullYear() - nascimento.getFullYear()
-      const mes = hoje.getMonth() - nascimento.getMonth()
-      if (mes < 0 || (mes === 0 && hoje.getDate() < nascimento.getDate())) {
-        idade--
-      }
-      return idade
-    }
-
-    // Função auxiliar para formatar moeda
-    function formatarMoeda(valor: any) {
-      if (!valor) return ""
-      try {
-        return typeof valor === "number" ? valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : valor
-      } catch (e) {
-        return valor
-      }
-    }
-
-    // Função auxiliar para pegar valor total mensal
-    function calcularValorTotalMensal(proposta: any) {
-      let total = 0
-      let valorTitular = proposta.valor_mensal || proposta.valor || proposta.valor_total || 0
-      if (typeof valorTitular !== "number") {
-        valorTitular = String(valorTitular).replace(/[^\d,\.]/g, "").replace(",", ".")
-        valorTitular = Number.parseFloat(valorTitular)
-      }
-      if (!isNaN(valorTitular) && valorTitular > 0) {
-        total += valorTitular
-      }
-      const dependentesArr = parseDependentes(proposta)
-      if (dependentesArr && dependentesArr.length > 0) {
-        dependentesArr.forEach((dep: any) => {
-          let valorDep = dep.valor_individual || dep.valor || dep.valor_plano || 0
-          if (typeof valorDep !== "number") {
-            valorDep = String(valorDep).replace(/[^\d,\.]/g, "").replace(",", ".")
-            valorDep = Number.parseFloat(valorDep)
-          }
-          if (!isNaN(valorDep) && valorDep > 0) {
-            total += valorDep
-          }
+      setSaving(true)
+      
+      // Atualizar a proposta com os dados de cadastro
+      const { error } = await supabase
+        .from("propostas")
+        .update({
+          administradora,
+          data_vencimento: dataVencimento,
+          data_vigencia: dataVigencia,
+          data_cadastro: new Date().toISOString(),
+          status: "cadastrado"
         })
-      }
-      
-      console.log("💰 Admin - Valor total mensal calculado:", total, "para proposta:", proposta.id)
-      return total
-    }
+        .eq("id", propostaCadastro.id)
 
-    // Montar objeto base
-    const dadosPDF: any = {
-      // Titular
-      nome: proposta.nome || proposta.nome_cliente || "",
-      cpf: proposta.cpf || "",
-      rg: proposta.rg || "",
-      data_nascimento: proposta.data_nascimento ? proposta.data_nascimento.split("T")[0].split("-").reverse().join("/") : "",
-      email: proposta.email || proposta.email_cliente || "",
-      telefone: proposta.telefone || proposta.telefone_cliente || proposta.celular || "",
-      cns: proposta.cns || proposta.cns_cliente || "",
-      nome_mae: proposta.nome_mae || proposta.nome_mae_cliente || "",
-      sexo: proposta.sexo || proposta.sexo_cliente || "",
-      estado_civil: proposta.estado_civil || proposta.estado_civil_cliente || "",
-      naturalidade: proposta.naturalidade || "",
-      nome_pai: proposta.nome_pai || "",
-      nacionalidade: proposta.nacionalidade || "",
-      profissao: proposta.profissao || "",
-      orgao_expedidor: proposta.orgao_expedidor || proposta.orgao_emissor || proposta.orgao_emissor_cliente || "",
-      uf_nascimento: proposta.uf_nascimento || proposta.uf || proposta.estado_nascimento || proposta.estado || proposta.uf_cliente || "",
-      endereco: proposta.endereco || proposta.endereco_cliente || "",
-      numero: proposta.numero || "",
-      complemento: proposta.complemento || "",
-      bairro: proposta.bairro || "",
-      cidade: proposta.cidade || proposta.cidade_cliente || "",
-      estado: proposta.estado || proposta.estado_cliente || "",
-      cep: proposta.cep || proposta.cep_cliente || "",
-      plano: proposta.produto_nome || proposta.plano_nome || proposta.sigla_plano || proposta.codigo_plano || "",
-      cobertura: proposta.cobertura || proposta.tipo_cobertura || "",
-      acomodacao: proposta.acomodacao || proposta.tipo_acomodacao || "",
-      valor: (() => {
-        let valorTitular = proposta.valor_plano || proposta.valor_mensal || proposta.valor || 0;
-        if (typeof valorTitular !== "number") {
-          valorTitular = String(valorTitular).replace(/[^\d,\.]/g, "").replace(",", ".");
-          valorTitular = Number.parseFloat(valorTitular);
-        }
-        return `R$ ${(!isNaN(valorTitular) && valorTitular > 0 ? valorTitular : 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
-      })(),
-      valor_total: formatarMoeda(calcularValorTotalMensal(proposta)), // Total mensal (titular + dependentes)
-      peso: proposta.peso || "",
-      altura: proposta.altura || "",
-      corretor_nome: proposta.corretor_nome || "",
-      corretor_codigo: proposta.corretor_codigo || "",
-      data_criacao: proposta.created_at ? proposta.created_at.split("T")[0].split("-").reverse().join("/") : "",
-      data_atualizacao: proposta.updated_at ? proposta.updated_at.split("T")[0].split("-").reverse().join("/") : "",
-      status: proposta.status || "pendente",
-      assinatura: `Assinado digitalmente por: ${proposta.nome || proposta.nome_cliente || ""}\nCPF: ${proposta.cpf || ""}\nE-mail: ${proposta.email || proposta.email_cliente || ""}\nIP: ${proposta.ip || ""}\nData/Hora: ${proposta.data_assinatura || proposta.data_assinatura_digital || ""}\nEste documento foi assinado digitalmente conforme a legislação vigente.`,
-      idade_titular: calcularIdade(proposta.data_nascimento),
-    }
-
-    // Adicionar até 4 dependentes
-    let dependentesArr = dependentes && dependentes.length > 0 ? dependentes : (proposta.dependentes_dados || proposta.dependentes || [])
-    if (typeof dependentesArr === "string") {
-      try { dependentesArr = JSON.parse(dependentesArr) } catch { dependentesArr = [] }
-    }
-    dependentesArr.slice(0, 4).forEach((dep: any, idx: number) => {
-      const prefixo = `dependente${idx + 1}_`
-      dadosPDF[`${prefixo}nome`] = dep.nome || ""
-      dadosPDF[`${prefixo}cpf`] = dep.cpf || ""
-      dadosPDF[`${prefixo}rg`] = dep.rg || ""
-      dadosPDF[`${prefixo}data_nascimento`] = dep.data_nascimento ? dep.data_nascimento.split("T")[0].split("-").reverse().join("/") : ""
-      dadosPDF[`${prefixo}parentesco`] = dep.parentesco || ""
-      dadosPDF[`${prefixo}cns`] = dep.cns || ""
-      dadosPDF[`${prefixo}sexo`] = dep.sexo || ""
-      dadosPDF[`${prefixo}estado_civil`] = dep.estado_civil || ""
-      dadosPDF[`${prefixo}naturalidade`] = dep.naturalidade || ""
-      dadosPDF[`${prefixo}idade`] = calcularIdade(dep.data_nascimento)
-      dadosPDF[`${prefixo}valor_individual`] = dep.valor_individual || dep.valor || dep.valor_plano || ""
-      dadosPDF[`${prefixo}peso`] = dep.peso || ""
-      dadosPDF[`${prefixo}altura`] = dep.altura || ""
-      dadosPDF[`${prefixo}assinatura`] = dep.assinatura || ""
-      dadosPDF[`${prefixo}nome_mae`] = dep.nome_mae || ""
-    })
-
-    // Adicionar respostas do questionário de saúde (se houver)
-    if (questionario && questionario.length > 0) {
-      console.log("🔍 DEBUG - Processando questionário:", questionario.length, "registros")
-      
-      // Separar questionários por tipo de pessoa
-      const questionariosTitular = questionario.filter(q => q.pessoa_tipo === "titular" || !q.pessoa_tipo)
-      const questionariosDependentes = questionario.filter(q => q.pessoa_tipo === "dependente")
-      
-      console.log(`📊 Questionários encontrados: ${questionariosTitular.length} titular, ${questionariosDependentes.length} dependentes`)
-      
-      // Processar questionário do titular primeiro
-      questionariosTitular.forEach((q: any, idx: number) => {
-        // Verificar se é da estrutura questionario_respostas + respostas_questionario
-        if (q.respostas_questionario && Array.isArray(q.respostas_questionario)) {
-          console.log(`📝 Processando questionário titular ${idx + 1} (estrutura respostas_questionario):`, q.respostas_questionario.length, "respostas")
-          
-          q.respostas_questionario.forEach((resposta: any, respIdx: number) => {
-            const pergunta = resposta.pergunta_texto || resposta.pergunta || `Pergunta ${resposta.pergunta_id || respIdx + 1}`
-            const respostaValor = resposta.resposta || ""
-            const observacao = resposta.observacao || ""
-            
-            dadosPDF[`pergunta${respIdx + 1}`] = pergunta
-            dadosPDF[`resposta${respIdx + 1}`] = respostaValor
-            if (observacao) {
-              dadosPDF[`observacao${respIdx + 1}`] = observacao
-            }
-            
-            // Adicionar também variações de nomes de campos para compatibilidade
-            dadosPDF[`pergunta_${respIdx + 1}`] = pergunta
-            dadosPDF[`resposta_${respIdx + 1}`] = respostaValor
-            dadosPDF[`questao${respIdx + 1}`] = pergunta
-            dadosPDF[`resp${respIdx + 1}`] = respostaValor
-          })
-        } else {
-          // Estrutura direta (questionario_saude)
-          console.log(`📝 Processando questionário titular ${idx + 1} (estrutura direta):`, q)
-          
-          const pergunta = q.pergunta || q.pergunta_texto || `Pergunta ${q.pergunta_id || idx + 1}`
-          const resposta = q.resposta || q.resposta_texto || ""
-          const observacao = q.observacao || q.detalhes || ""
-          
-          dadosPDF[`pergunta${idx + 1}`] = pergunta
-          dadosPDF[`resposta${idx + 1}`] = resposta
-          if (observacao) {
-            dadosPDF[`observacao${idx + 1}`] = observacao
-          }
-          
-          // Adicionar também variações de nomes de campos para compatibilidade
-          dadosPDF[`pergunta_${idx + 1}`] = pergunta
-          dadosPDF[`resposta_${idx + 1}`] = resposta
-          dadosPDF[`questao${idx + 1}`] = pergunta
-          dadosPDF[`resp${idx + 1}`] = resposta
-        }
-      })
-      
-      // Processar questionários dos dependentes
-      questionariosDependentes.forEach((q: any, idx: number) => {
-        const dependenteNome = q.pessoa_nome || `Dependente ${idx + 1}`
-        console.log(`📝 Processando questionário do dependente: ${dependenteNome}`)
-        
-        // Verificar se é da estrutura questionario_respostas + respostas_questionario
-        if (q.respostas_questionario && Array.isArray(q.respostas_questionario)) {
-          console.log(`📝 Processando questionário dependente ${dependenteNome} (estrutura respostas_questionario):`, q.respostas_questionario.length, "respostas")
-          
-          q.respostas_questionario.forEach((resposta: any, respIdx: number) => {
-            const pergunta = resposta.pergunta_texto || resposta.pergunta || `Pergunta ${resposta.pergunta_id || respIdx + 1}`
-            const respostaValor = resposta.resposta || ""
-            const observacao = resposta.observacao || ""
-            
-            // Adicionar campos no formato que o modelo PDF espera
-            dadosPDF[`resposta${respIdx + 1}_dependente${idx + 1}`] = respostaValor
-            if (observacao) {
-              dadosPDF[`observacao${respIdx + 1}_dependente${idx + 1}`] = observacao
-            }
-            
-            // Adicionar também variações de nomes de campos para compatibilidade
-            dadosPDF[`dependente_${idx + 1}_pergunta${respIdx + 1}`] = pergunta
-            dadosPDF[`dependente_${idx + 1}_resposta${respIdx + 1}`] = respostaValor
-            dadosPDF[`dep${idx + 1}_pergunta${respIdx + 1}`] = pergunta
-            dadosPDF[`dep${idx + 1}_resposta${respIdx + 1}`] = respostaValor
-            dadosPDF[`dep${idx + 1}_questao${respIdx + 1}`] = pergunta
-            dadosPDF[`dep${idx + 1}_resp${respIdx + 1}`] = respostaValor
-          })
-        } else {
-          // Estrutura direta (questionario_saude)
-          console.log(`📝 Processando questionário dependente ${dependenteNome} (estrutura direta):`, q)
-          
-          const pergunta = q.pergunta || q.pergunta_texto || `Pergunta ${q.pergunta_id || idx + 1}`
-          const resposta = q.resposta || q.resposta_texto || ""
-          const observacao = q.observacao || q.detalhes || ""
-          
-          // Adicionar campos no formato que o modelo PDF espera
-          dadosPDF[`resposta${idx + 1}_dependente${idx + 1}`] = resposta
-          if (observacao) {
-            dadosPDF[`observacao${idx + 1}_dependente${idx + 1}`] = observacao
-          }
-          
-          // Adicionar também variações de nomes de campos para compatibilidade
-          dadosPDF[`dependente_${idx + 1}_pergunta${idx + 1}`] = pergunta
-          dadosPDF[`dependente_${idx + 1}_resposta${idx + 1}`] = resposta
-          dadosPDF[`dep${idx + 1}_pergunta${idx + 1}`] = pergunta
-          dadosPDF[`dep${idx + 1}_resposta${idx + 1}`] = resposta
-          dadosPDF[`dep${idx + 1}_questao${idx + 1}`] = pergunta
-          dadosPDF[`dep${idx + 1}_resp${idx + 1}`] = resposta
-        }
-      })
-    }
-
-    console.log("Dados preparados para preenchimento do PDF:", dadosPDF)
-    
-    // DEBUG: Log detalhado dos campos que podem estar faltando
-    console.log("🔍 DEBUG - Campos específicos que podem estar faltando:")
-    console.log("   CNS:", dadosPDF.cns)
-    console.log("   UF Nascimento:", dadosPDF.uf_nascimento)
-    console.log("   Idade Titular:", dadosPDF.idade_titular)
-    console.log("   Estado Civil:", dadosPDF.estado_civil)
-    console.log("   Naturalidade:", dadosPDF.naturalidade)
-    console.log("   Nome da Mãe:", dadosPDF.nome_mae)
-    console.log("   Nome do Pai:", dadosPDF.nome_pai)
-    console.log("   Nacionalidade:", dadosPDF.nacionalidade)
-    console.log("   Profissão:", dadosPDF.profissao)
-    console.log("   Órgão Expedidor:", dadosPDF.orgao_expedidor)
-    console.log("   Acomodação:", dadosPDF.acomodacao)
-    console.log("   Assinatura:", dadosPDF.assinatura ? "Presente" : "Ausente")
-    console.log("   Peso Titular:", dadosPDF.peso, "(origem: proposta.peso =", proposta.peso, ")")
-    console.log("   Altura Titular:", dadosPDF.altura, "(origem: proposta.altura =", proposta.altura, ")")
-    console.log("   Valor Total:", dadosPDF.valor_total)
-    
-    // DEBUG: Verificar dados dos dependentes
-    if (dependentesArr && dependentesArr.length > 0) {
-      console.log("🔍 DEBUG - Dados dos dependentes:")
-      dependentesArr.forEach((dep: any, idx: number) => {
-        console.log(`   Dependente ${idx + 1} (${dep.nome}):`)
-        console.log(`     CNS: ${dadosPDF[`dependente${idx + 1}_cns`]}`)
-        console.log(`     Idade: ${dadosPDF[`dependente${idx + 1}_idade`]}`)
-        console.log(`     UF Nascimento: ${dadosPDF[`dependente${idx + 1}_uf_nascimento`]}`)
-        console.log(`     Peso: ${dadosPDF[`dependente${idx + 1}_peso`]} (origem: dep.peso = ${dep.peso})`)
-        console.log(`     Altura: ${dadosPDF[`dependente${idx + 1}_altura`]} (origem: dep.altura = ${dep.altura})`)
-      })
-    }
-    
-    // DEBUG: Verificar questionário
-    if (questionario && questionario.length > 0) {
-      console.log("🔍 DEBUG - Questionário de saúde:")
-      console.log(`   Total de respostas: ${questionario.length}`)
-      questionario.forEach((q: any, idx: number) => {
-        console.log(`   Pergunta ${idx + 1}: ${dadosPDF[`pergunta${idx + 1}`]} = ${dadosPDF[`resposta${idx + 1}`]}`)
-      })
-    }
-    
-    // DEBUG: Verificar campos dos dependentes
-    console.log("🔍 DEBUG - Campos dos dependentes gerados:")
-    if (dependentesArr && dependentesArr.length > 0) {
-      dependentesArr.forEach((dep: any, idx: number) => {
-        console.log(`   Dependente ${idx + 1} (${dep.nome}):`)
-        // Verificar campos básicos
-        console.log(`     Nome: ${dadosPDF[`dependente${idx + 1}_nome`]}`)
-        console.log(`     CPF: ${dadosPDF[`dependente${idx + 1}_cpf`]}`)
-        console.log(`     Peso: ${dadosPDF[`dependente${idx + 1}_peso`]}`)
-        console.log(`     Altura: ${dadosPDF[`dependente${idx + 1}_altura`]}`)
-        
-        // Verificar campos de questionário
-        for (let i = 1; i <= 21; i++) {
-          const campoResposta = `resposta${i}_dependente${idx + 1}`
-          if (dadosPDF[campoResposta]) {
-            console.log(`     ${campoResposta}: ${dadosPDF[campoResposta]}`)
-          }
-        }
-      })
-    }
-    
-    return dadosPDF
-  }
-
-  function formatarData(dataString: any) {
-    if (!dataString) return ""
-    try {
-      const data = new Date(dataString)
-      return data.toLocaleDateString("pt-BR")
-    } catch (e) {
-      return dataString
-    }
-  }
-
-  function formatarMoeda(valor: any) {
-    if (!valor) return ""
-    try {
-      return typeof valor === "number" ? valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : valor
-    } catch (e) {
-      return valor
-    }
-  }
-
-  async function aprovarProposta(id: any) {
-    try {
-      await atualizarStatusProposta(id, "aprovada")
-
-      // Buscar dados da proposta para enviar email ao corretor
-      const proposta = propostas.find((p) => p.id === id)
-      if (proposta && proposta.origem === "propostas_corretores" && proposta.corretor_email) {
-        const { enviarEmailPropostaAprovada } = await import("@/services/email-service")
-
-        try {
-          await enviarEmailPropostaAprovada(
-            proposta.corretor_email,
-            proposta.corretor_nome || "Corretor",
-            obterNomeCliente(proposta),
-            String(proposta.id),
-            obterValorProposta(proposta),
-            proposta.comissao || 0,
-          )
-          console.log("✅ Email de aprovação enviado ao corretor")
-        } catch (emailError) {
-          console.warn("⚠️ Erro ao enviar email ao corretor:", emailError)
-          // Não falhar a aprovação por causa do email
-        }
+      if (error) {
+        throw error
       }
 
-      toast.success("Proposta aprovada com sucesso")
+      toast.success("Cadastro finalizado com sucesso!")
+      setShowModalCadastro(false)
+      setPropostaCadastro(null)
+      setAdministradora("")
+      setDataVencimento("")
+      setDataVigencia("")
       carregarPropostas()
     } catch (error: any) {
-      console.error("Erro ao aprovar proposta:", error)
-      toast.error("Erro ao aprovar proposta")
+      console.error("Erro ao finalizar cadastro:", error)
+      toast.error("Erro ao finalizar cadastro")
+    } finally {
+      setSaving(false)
     }
   }
 
-  async function rejeitarProposta() {
-    if (!propostaDetalhada) return
-
+  async function handleCadastroManual(e: any) {
+    e.preventDefault()
+    // Validação de CPF
+    if (!validarCPF(formManual.cpf)) {
+      toast.error("CPF inválido")
+      return
+    }
+    setUploading(true)
     try {
-      await atualizarStatusProposta(propostaDetalhada.id, "rejeitada", motivoRejeicao)
+      // Upload dos anexos do titular
+      let anexosUrls: Record<string, string> = {}
+      if (formManual.anexos && (
+        formManual.anexos.rg_frente || 
+        formManual.anexos.rg_verso || 
+        formManual.anexos.cpf || 
+        formManual.anexos.comprovante_residencia || 
+        formManual.anexos.cns
+      )) {
+        const uploadTitular = await UploadService.uploadDocumentos(
+          "manual_titular", // id temporário
+          formManual.anexos,
+          [],
+        )
+        anexosUrls = uploadTitular.documentosUrls
+      }
 
-      // Enviar email ao corretor se for proposta de corretor
-      if (propostaDetalhada.origem === "propostas_corretores" && propostaDetalhada.corretor_email) {
-        const { enviarEmailPropostaRejeitada } = await import("@/services/email-service")
-
-        try {
-          await enviarEmailPropostaRejeitada(
-            propostaDetalhada.corretor_email,
-            propostaDetalhada.corretor_nome || "Corretor",
-            obterNomeCliente(propostaDetalhada),
-            String(propostaDetalhada.id),
-            motivoRejeicao,
-          )
-          console.log("✅ Email de rejeição enviado ao corretor")
-        } catch (emailError) {
-          console.warn("⚠️ Erro ao enviar email ao corretor:", emailError)
-          // Não falhar a rejeição por causa do email
+      // Upload dos anexos dos dependentes
+      let anexosDependentesUrls: Record<string, string>[] = []
+      if (formManual.anexosDependentes && formManual.anexosDependentes.length > 0) {
+        for (let i = 0; i < formManual.anexosDependentes.length; i++) {
+          const anexosDependente = formManual.anexosDependentes[i]
+          if (anexosDependente && Object.keys(anexosDependente).some(key => anexosDependente[key])) {
+            const uploadDependente = await UploadService.uploadDocumentos(
+              `manual_dependente_${i}`,
+              anexosDependente,
+              [],
+            )
+            anexosDependentesUrls.push(uploadDependente.documentosUrls)
+          } else {
+            anexosDependentesUrls.push({})
+          }
         }
       }
 
-      toast.success("Proposta rejeitada com sucesso")
-      setShowModalRejeicao(false)
-      setMotivoRejeicao("")
-      setPropostaDetalhada(null)
-      carregarPropostas()
-    } catch (error: any) {
-      console.error("Erro ao rejeitar proposta:", error)
-      toast.error("Erro ao rejeitar proposta")
-    }
-  }
+      // Criar proposta manualmente com todos os dados (sem anexos/anexosDependentes)
+      const propostaId = await criarProposta({
+        // Dados do titular
+        nome: formManual.nome,
+        cpf: formManual.cpf,
+        data_nascimento: formManual.data_nascimento,
+        email: formManual.email,
+        telefone: formManual.telefone,
+        cns: formManual.cns,
+        rg: formManual.rg,
+        orgao_emissor: formManual.orgao_emissor,
+        nome_mae: formManual.nome_mae,
+        sexo: formManual.sexo,
+        uf_nascimento: formManual.uf_nascimento,
+        // Endereço
+        cep: formManual.cep,
+        endereco: formManual.endereco,
+        numero: formManual.numero,
+        complemento: formManual.complemento,
+        bairro: formManual.bairro,
+        cidade: formManual.cidade,
+        estado: formManual.estado,
+        // Dados do plano
+        produto_id: formManual.produto_id,
+        cobertura: formManual.cobertura,
+        acomodacao: formManual.acomodacao,
+        sigla_plano: formManual.sigla_plano,
+        valor: formManual.valor,
+        // Dados de cadastro
+        corretor_id: formManual.corretor_id,
+        administradora: formManual.administradora,
+        data_vigencia: formManual.data_vigencia,
+        data_vencimento: formManual.data_vencimento,
+        data_cadastro: formManual.data_cadastro,
+        status: formManual.status,
+        // Dependentes
+        dependentes: formManual.dependentes,
+        // Outros
+        observacoes: formManual.observacoes,
+        // origem removido pois não existe na tabela
+        estado_civil: formManual.estado_civil,
+      })
 
-  async function enviarEmailValidacao(proposta: any) {
-    try {
-      if (!proposta.id) {
-        throw new Error("Proposta sem ID")
-      }
-
-      const emailCliente = obterEmailCliente(proposta)
-      const nomeCliente = obterNomeCliente(proposta)
-
-      if (!emailCliente || emailCliente === "Email não informado") {
-        throw new Error("Proposta sem email válido")
-      }
-
-      setEnviandoEmail(proposta.id)
-
-      const sucesso = await enviarValidacaoEmail(proposta.id, emailCliente, nomeCliente)
-
-      if (sucesso) {
-        toast.success("Email de validação enviado com sucesso!")
+      // Após criar a proposta, atualizar os campos de documentos
+      if (propostaId) {
+        const updateData: any = {
+          updated_at: new Date().toISOString(),
+        }
+        if (anexosUrls) {
+          updateData.documentos_urls = anexosUrls
+          if (anexosUrls.rg_frente) updateData.rg_frente_url = anexosUrls.rg_frente
+          if (anexosUrls.rg_verso) updateData.rg_verso_url = anexosUrls.rg_verso
+          if (anexosUrls.cpf) updateData.cpf_url = anexosUrls.cpf
+          if (anexosUrls.comprovante_residencia) updateData.comprovante_residencia_url = anexosUrls.comprovante_residencia
+          if (anexosUrls.cns) updateData.cns_url = anexosUrls.cns
+        }
+        if (anexosDependentesUrls && anexosDependentesUrls.length > 0) {
+          updateData.documentos_dependentes_urls = anexosDependentesUrls
+        }
+        await supabase.from("propostas").update(updateData).eq("id", propostaId)
+        toast.success("Cliente cadastrado manualmente com sucesso!")
+        setShowModalCadastroManual(false)
+        setFormManual({
+          nome: "",
+          email: "",
+          telefone: "",
+          cpf: "",
+          data_nascimento: "",
+          cns: "",
+          rg: "",
+          orgao_emissor: "",
+          nome_mae: "",
+          sexo: "Masculino",
+          uf_nascimento: "SP",
+          cep: "",
+          endereco: "",
+          numero: "",
+          complemento: "",
+          bairro: "",
+          cidade: "",
+          estado: "",
+          produto_id: "",
+          cobertura: "Nacional",
+          acomodacao: "Enfermaria",
+          sigla_plano: "",
+          valor: "",
+          tem_dependentes: false,
+          dependentes: [],
+          anexos: {
+            rg_frente: null,
+            rg_verso: null,
+            cpf: null,
+            comprovante_residencia: null,
+            cns: null,
+          },
+          anexosDependentes: [],
+          observacoes: "",
+          corretor_id: "",
+          administradora: "",
+          produto: "",
+          data_vigencia: "",
+          data_vencimento: "",
+          data_cadastro: "",
+          status: "cadastrado",
+          documentos: {},
+          estado_civil: "Solteiro(a)",
+        })
         carregarPropostas()
       } else {
-        throw new Error("Falha no envio do email")
+        toast.error("Erro ao cadastrar cliente manualmente")
       }
-    } catch (error: any) {
-      console.error("❌ Erro completo:", error)
-      toast.error(error.message || "Erro ao enviar email de validação")
+    } catch (error) {
+      console.error("Erro ao cadastrar cliente manualmente:", error)
+      toast.error("Erro ao cadastrar cliente manualmente")
     } finally {
-      setEnviandoEmail(null)
+      setUploading(false)
     }
   }
 
-  async function enviarParaAnalise(id: any) {
-    try {
-      await atualizarStatusProposta(id, "pendente")
-      toast.success("Proposta enviada para análise com sucesso!")
-      carregarPropostas()
-    } catch (error: any) {
-      console.error("Erro ao enviar proposta para análise:", error)
-      toast.error("Erro ao enviar proposta para análise")
-    }
-  }
-
-  function abrirModalRejeicao(proposta: any) {
-    setPropostaDetalhada(proposta)
-    setShowModalRejeicao(true)
+  function abrirModalCadastro(proposta: any) {
+    setPropostaCadastro(proposta)
+    setShowModalCadastro(true)
   }
 
   async function abrirModalDetalhes(proposta: any) {
@@ -860,282 +347,46 @@ export default function PropostasPage() {
     await carregarDetalhesCompletos(proposta)
   }
 
-  function getStatusBadge(status: any) {
-    const statusConfig = {
-      parcial: { label: "Aguardando Validação", color: "bg-blue-50 text-blue-700 border border-blue-200" },
-      aguardando_cliente: {
-        label: "Aguardando Cliente",
-        color: "bg-yellow-50 text-yellow-700 border border-yellow-200",
-      },
-      pendente: { label: "Aguardando Análise", color: "bg-amber-50 text-amber-700 border border-amber-200" },
-      aprovada: { label: "Aprovada", color: "bg-green-50 text-green-700 border border-green-200" },
-      rejeitada: { label: "Rejeitada", color: "bg-red-50 text-red-700 border border-red-200" },
-    }
-
-    return statusConfig[status as keyof typeof statusConfig] || { label: status, color: "bg-gray-50 text-gray-700 border border-gray-200" }
-  }
-
-  function getOrigemBadge(origem: any) {
-    const origemConfig = {
-      propostas: { label: "Cliente Direto", color: "bg-slate-50 text-slate-700 border border-slate-200" },
-      propostas_corretores: { label: "Via Corretor", color: "bg-gray-50 text-gray-700 border border-gray-200" },
-    }
-
-    return origemConfig[origem as keyof typeof origemConfig] || { label: origem, color: "bg-gray-50 text-gray-700 border border-gray-200" }
-  }
-
-  function obterIdSeguro(proposta: any) {
-    if (!proposta || !proposta.id) return "N/A"
-    return String(proposta.id)
-  }
-
-  function getTipoArquivo(url: any) {
-    const extensao = url.split(".").pop()?.toLowerCase()
-    if (["jpg", "jpeg", "png", "gif", "webp"].includes(extensao)) {
-      return "imagem"
-    } else if (extensao === "pdf") {
-      return "pdf"
-    }
-    return "documento"
-  }
-
-  function getNomeDocumento(key: any) {
-    const nomes = {
-      rg_frente: "RG (Frente)",
-      rg_verso: "RG (Verso)",
-      cpf: "CPF",
-      comprovante_residencia: "Comprovante de Residência",
-      cns: "Cartão Nacional de Saúde",
-      foto_3x4: "Foto 3x4",
-      certidao_nascimento: "Certidão de Nascimento",
-      comprovante_renda: "Comprovante de Renda",
-    }
-    return nomes[key as keyof typeof nomes] || (key.replace(/_/g, " ").replace(/\b\w/g, (l: any) => l.toUpperCase()))
-  }
-
-  function getParentescoAmigavel(parentesco: any) {
-    const parentescos = {
-      conjuge: "Cônjuge",
-      filho: "Filho(a)",
-      pai: "Pai",
-      mae: "Mãe",
-      irmao: "Irmão(ã)",
-      sogro: "Sogro(a)",
-      genro: "Genro/Nora",
-      neto: "Neto(a)",
-      outro: "Outro",
-    }
-    return parentescos[parentesco as keyof typeof parentescos] || parentesco
-  }
-
-  function calcularIdade(dataNascimento: any) {
-    if (!dataNascimento) return "N/A"
-    const hoje = new Date()
-    const nascimento = new Date(dataNascimento)
-    let idade = hoje.getFullYear() - nascimento.getFullYear()
-    const mes = hoje.getMonth() - nascimento.getMonth()
-    if (mes < 0 || (mes === 0 && hoje.getDate() < nascimento.getDate())) {
-      idade--
-    }
-    return `${idade} anos`
-  }
-
-  function formatarDataSegura(dataString: any) {
-    if (!dataString) return "N/A"
-
+  async function carregarDetalhesCompletos(proposta: any) {
     try {
-      const data = new Date(dataString)
-      if (isNaN(data.getTime())) {
-        return "Data inválida"
-      }
-
-      return data.toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
+      setLoadingDetalhes(true)
+      // Aqui você pode carregar detalhes adicionais se necessário
+      // Por enquanto, vamos usar os dados básicos da proposta
     } catch (error) {
-      return "Erro na data"
+      console.error("Erro ao carregar detalhes:", error)
+      toast.error("Erro ao carregar detalhes da proposta")
+    } finally {
+      setLoadingDetalhes(false)
     }
   }
 
-  function formatarHoraSegura(dataString: any) {
-    if (!dataString) return "N/A"
-
-    try {
-      const data = new Date(dataString)
-      if (isNaN(data.getTime())) {
-        return "Hora inválida"
-      }
-
-      return data.toLocaleTimeString("pt-BR", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    } catch (error) {
-      return "Erro na hora"
+  function obterNomeCliente(proposta: any) {
+    if (proposta.origem === "propostas") {
+      return proposta.nome_cliente || proposta.nome || "Nome não informado"
+    } else {
+      return proposta.cliente || proposta.nome_cliente || "Nome não informado"
     }
   }
 
-  function formatarDataHoraSegura(dataString: any) {
-    if (!dataString) return "N/A"
-
-    try {
-      const data = new Date(dataString)
-      if (isNaN(data.getTime())) {
-        return "Data inválida"
-      }
-
-      return data.toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
-    } catch (error) {
-      return "Erro na data"
+  function obterEmailCliente(proposta: any) {
+    if (proposta.origem === "propostas") {
+      return proposta.email || "Email não informado"
+    } else {
+      return proposta.email_cliente || proposta.email || "Email não informado"
     }
   }
 
-  function renderDeclaracaoSaudeUnificada() {
-    if (!questionariosSaude || questionariosSaude.length === 0) {
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Heart className="h-5 w-5 text-red-500" />
-              Declaração de Saúde
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-500">Nenhuma resposta encontrada</p>
-          </CardContent>
-        </Card>
-      )
-    }
-    return (
-      <div className="space-y-6">
-        {questionariosSaude.map((q, idx) => (
-          <Card key={q.id || idx}>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Heart className="h-5 w-5 text-red-500" />
-                {q.pessoa_tipo === "titular"
-                  ? "Declaração de Saúde - Titular"
-                  : `Declaração de Saúde - ${q.pessoa_nome}`}
-          </CardTitle>
-        </CardHeader>
-            <CardContent>
-              <div className="mb-2 text-sm text-gray-700">
-                <span className="mr-4">Peso: <b>{q.peso || "-"} kg</b></span>
-                <span>Altura: <b>{q.altura || "-"} cm</b></span>
-              </div>
-              {q.respostas_questionario && q.respostas_questionario.length > 0 ? (
-                q.respostas_questionario.map((resposta: any, i: any) => (
-                  <div key={i} className="border-l-4 border-blue-200 pl-4 py-2 mb-2">
-                    <div className="font-medium text-gray-900 mb-1">Pergunta {resposta.pergunta_id}</div>
-                    <div className="text-sm text-gray-600 mb-2">{resposta.pergunta_texto || resposta.pergunta || "Pergunta não disponível"}</div>
-                    <div className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${resposta.resposta === "sim" || resposta.resposta === true ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}`}>
-                {resposta.resposta === "sim" || resposta.resposta === true ? "SIM" : "NÃO"}
-              </div>
-                    {resposta.observacao && (
-                <div className="mt-2 text-sm text-gray-700 bg-gray-50 p-2 rounded">
-                        <strong>Observações:</strong> {resposta.observacao}
-                </div>
-              )}
-            </div>
-                ))
-              ) : (
-                <div className="text-gray-500">Nenhuma resposta encontrada</div>
-              )}
-        </CardContent>
-      </Card>
-        ))}
-      </div>
-    )
-  }
-
-  function renderDocumentos(documentos: any, titulo: any = "Documentos", pessoa: any = "titular") {
-    if (!documentos || Object.keys(documentos).length === 0) {
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-blue-500" />
-              {titulo}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-500">Nenhum documento encontrado</p>
-          </CardContent>
-        </Card>
-      )
-    }
-
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-blue-500" />
-            {titulo}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.entries(documentos as any).map(([tipo, url]: [any, any]) => {
-              const nomeDoc = getNomeDocumento(tipo)
-              const tipoArquivo = getTipoArquivo(url)
-              const nomeArquivo = `${nomeDoc.replace(/[^a-zA-Z0-9]/g, "_")}.${url.split(".").pop()?.toLowerCase() || "pdf"}`
-
-              return (
-                <div key={tipo} className="border border-gray-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="font-medium text-sm text-gray-900">{nomeDoc}</div>
-                      <div className="text-xs text-gray-500 capitalize">{tipoArquivo}</div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => window.open(url, "_blank")}
-                        className="h-8 w-8 p-0"
-                        title="Visualizar"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => baixarDocumentoIndividual(url, nomeArquivo)}
-                        disabled={downloadingDoc === nomeArquivo}
-                        className="h-8 w-8 p-0"
-                        title="Baixar"
-                      >
-                        {downloadingDoc === nomeArquivo ? (
-                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
-                        ) : (
-                          <Download className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-    )
+  function verificarCadastroCompleto(proposta: any) {
+    return proposta.administradora && proposta.data_vencimento && proposta.data_vigencia
   }
 
   const propostasFiltradas = propostas.filter((proposta) => {
     const nomeCliente = obterNomeCliente(proposta).toLowerCase()
     const emailCliente = obterEmailCliente(proposta).toLowerCase()
     const matchesFiltro = nomeCliente.includes(filtro.toLowerCase()) || emailCliente.includes(filtro.toLowerCase())
-    const matchesStatus = statusFiltro === "todos" || proposta.status === statusFiltro
     const matchesOrigem = origemFiltro === "todas" || proposta.origem === origemFiltro
 
-    return matchesFiltro && matchesStatus && matchesOrigem
+    return matchesFiltro && matchesOrigem
   })
 
   // Cálculos de paginação
@@ -1148,7 +399,144 @@ export default function PropostasPage() {
   // Reset da página quando filtros mudam
   useEffect(() => {
     setPaginaAtual(1)
-  }, [filtro, statusFiltro, origemFiltro])
+  }, [filtro, origemFiltro])
+
+  // Estado para exibir nome do produto selecionado
+  const produtoSelecionado = produtos.find((p) => String(p.id) === String(formManual.produto_id))
+
+  // Função para calcular idade
+  function calcularIdade(dataNascimento: string) {
+    if (!dataNascimento) return undefined;
+    const hoje = new Date();
+    const nascimento = new Date(dataNascimento);
+    let idade = hoje.getFullYear() - nascimento.getFullYear();
+    const m = hoje.getMonth() - nascimento.getMonth();
+    if (m < 0 || (m === 0 && hoje.getDate() < nascimento.getDate())) {
+      idade--;
+    }
+    return idade;
+  }
+
+  // Cálculo automático do valor
+  useEffect(() => {
+    async function calcularValorAutomatico() {
+      if (formManual.produto_id && formManual.data_nascimento) {
+        const idade = calcularIdade(formManual.data_nascimento)
+        if (!idade || isNaN(idade)) return;
+        let valor = 0;
+        if (formManual.tabela_id) {
+          // Buscar valor pela tabela selecionada
+          const { data: faixas, error } = await supabase
+            .from("tabelas_precos_faixas")
+            .select("faixa_etaria, valor")
+            .eq("tabela_id", formManual.tabela_id)
+            .order("faixa_etaria", { ascending: true })
+          if (!error && faixas && faixas.length > 0) {
+            for (const faixa of faixas) {
+              if (faixa.faixa_etaria.includes("-")) {
+                const [minStr, maxStr] = faixa.faixa_etaria.split("-")
+                const min = Number.parseInt(minStr.trim(), 10)
+                const max = Number.parseInt(maxStr.trim(), 10)
+                if (!isNaN(min) && !isNaN(max) && idade >= min && idade <= max) {
+                  valor = Number.parseFloat(faixa.valor) || 0
+                  break
+                }
+              } else if (faixa.faixa_etaria.endsWith("+")) {
+                const minStr = faixa.faixa_etaria.replace("+", "").trim()
+                const min = Number.parseInt(minStr, 10)
+                if (!isNaN(min) && idade >= min) {
+                  valor = Number.parseFloat(faixa.valor) || 0
+                  break
+                }
+              } else {
+                const idadeExata = Number.parseInt(faixa.faixa_etaria.trim(), 10)
+                if (!isNaN(idadeExata) && idade === idadeExata) {
+                  valor = Number.parseFloat(faixa.valor) || 0
+                  break
+                }
+              }
+            }
+          }
+        } else {
+          valor = await obterValorProdutoPorIdade(formManual.produto_id, idade)
+        }
+        if (valor > 0) {
+          setFormManual((prev) => ({ ...prev, valor: formatarMoeda(valor) }))
+        } else {
+          setFormManual((prev) => ({ ...prev, valor: "" }))
+          toast.warning("Não foi possível calcular o valor automaticamente. Informe o valor manualmente.")
+        }
+      }
+    }
+    calcularValorAutomatico()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formManual.produto_id, formManual.tabela_id, formManual.data_nascimento])
+
+  // Função para formatar CPF
+  function formatarCpfInput(e: React.ChangeEvent<HTMLInputElement>) {
+    let cpf = e.target.value.replace(/\D/g, "")
+    if (cpf.length > 11) {
+      cpf = cpf.substring(0, 11)
+    }
+    if (cpf.length > 9) {
+      cpf = cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{0,2})$/, "$1.$2.$3-$4")
+    } else if (cpf.length > 6) {
+      cpf = cpf.replace(/^(\d{3})(\d{3})(\d{0,3})$/, "$1.$2.$3")
+    } else if (cpf.length > 3) {
+      cpf = cpf.replace(/^(\d{3})(\d{0,3})$/, "$1.$2")
+    }
+    setFormManual((prev) => ({ ...prev, cpf }))
+  }
+
+  // Função para formatar CEP
+  function formatarCepInput(e: React.ChangeEvent<HTMLInputElement>) {
+    let cep = e.target.value.replace(/\D/g, "")
+    if (cep.length > 8) {
+      cep = cep.substring(0, 8)
+    }
+    if (cep.length > 5) {
+      cep = cep.replace(/^(\d{5})(\d{0,3})$/, "$1-$2")
+    }
+    setFormManual((prev) => ({ ...prev, cep }))
+  }
+
+  // Função para buscar endereço pelo CEP
+  async function buscarCep(cep: string) {
+    const cepNumerico = cep.replace(/\D/g, "")
+    if (cepNumerico.length !== 8) return
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cepNumerico}/json/`)
+      const data = await response.json()
+      if (!data.erro) {
+        setFormManual((prev) => ({
+          ...prev,
+          endereco: data.logradouro || "",
+          bairro: data.bairro || "",
+          cidade: data.localidade || "",
+          estado: data.uf || "",
+          cep: prev.cep // mantém o formato
+        }))
+      }
+    } catch (error) {
+      console.error("Erro ao buscar CEP:", error)
+    }
+  }
+
+  // Função para formatar telefone
+  function formatarTelefoneInput(e: React.ChangeEvent<HTMLInputElement>) {
+    let telefone = e.target.value.replace(/\D/g, "")
+    if (telefone.length > 11) {
+      telefone = telefone.substring(0, 11)
+    }
+    if (telefone.length > 10) {
+      telefone = telefone.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3")
+    } else if (telefone.length > 6) {
+      telefone = telefone.replace(/^(\d{2})(\d{4})(\d{0,4})$/, "($1) $2-$3")
+    } else if (telefone.length > 2) {
+      telefone = telefone.replace(/^(\d{2})(\d{0,5})$/, "($1) $2")
+    }
+    setFormManual((prev) => ({ ...prev, telefone }))
+  }
 
   if (loading) {
     return (
@@ -1160,41 +548,46 @@ export default function PropostasPage() {
     )
   }
 
+  const corretorSelecionado = corretoresDisponiveis.find((c) => String(c.id) === String(formManual.corretor_id))
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Propostas Recebidas</h1>
-        <button
-          onClick={carregarPropostas}
-          className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-        >
-          Atualizar Lista
-        </button>
+        <h1 className="text-2xl font-bold text-gray-900">Clientes Cadastrados</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={carregarPropostas}
+            className="bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Atualizar Lista
+          </button>
+          <button
+            onClick={() => setShowModalCadastroManual(true)}
+            className="bg-green-700 hover:bg-green-800 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            + Adicionar Cliente Manualmente
+          </button>
+        </div>
       </div>
 
       {/* Estatísticas Rápidas */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
           <div className="text-xl font-bold text-gray-900">{propostas.length}</div>
-          <div className="text-xs text-gray-600">Total de Propostas</div>
+          <div className="text-xs text-gray-600">Total Aprovados</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
-          <div className="text-xl font-bold text-blue-700">
-            {propostas.filter((p) => p.status === "parcial").length}
+          <div className="text-xl font-bold text-green-600">
+            {propostas.filter((p) => verificarCadastroCompleto(p)).length}
           </div>
-          <div className="text-xs text-gray-600">Aguardando Validação</div>
+          <div className="text-xs text-gray-600">Cadastros Completos</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
-          <div className="text-xl font-bold text-amber-700">
-            {propostas.filter((p) => p.status === "pendente").length}
+          <div className="text-xl font-bold text-orange-600">
+            {propostas.filter((p) => !verificarCadastroCompleto(p)).length}
           </div>
-          <div className="text-xs text-gray-600">Aguardando Análise</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
-          <div className="text-xl font-bold text-gray-700">
-            {propostas.filter((p) => p.origem === "propostas").length}
-          </div>
-          <div className="text-xs text-gray-600">Clientes Diretos</div>
+          <div className="text-xs text-gray-600">Pendentes de Cadastro</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
           <div className="text-xl font-bold text-gray-700">
@@ -1209,40 +602,40 @@ export default function PropostasPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Buscar</label>
-            <input
+            <Input
               type="text"
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
               placeholder="Nome ou email..."
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500"
+              className="w-full"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
-            <select
-              value={statusFiltro}
-              onChange={(e) => setStatusFiltro(e.target.value)}
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500"
-            >
-              <option value="todos">Todos</option>
-              <option value="parcial">Aguardando Validação</option>
-              <option value="aguardando_cliente">Aguardando Cliente</option>
-              <option value="pendente">Aguardando Análise</option>
-              <option value="aprovada">Aprovada</option>
-              <option value="rejeitada">Rejeitada</option>
-            </select>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Corretor</label>
+            <Select value={origemFiltro} onValueChange={setOrigemFiltro}>
+              <SelectTrigger>
+                <SelectValue placeholder="Todos os corretores" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todos</SelectItem>
+                {corretoresDisponiveis.map((c) => (
+                  <SelectItem key={c.id} value={c.nome}>{c.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Origem</label>
-            <select
-              value={origemFiltro}
-              onChange={(e) => setOrigemFiltro(e.target.value)}
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-gray-500 focus:border-gray-500"
-            >
-              <option value="todas">Todas</option>
-              <option value="propostas">Clientes Diretos</option>
-              <option value="propostas_corretores">Via Corretores</option>
-            </select>
+            <Select value={origemFiltro} onValueChange={setOrigemFiltro}>
+              <SelectTrigger>
+                <SelectValue placeholder="Todas as origens" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todas</SelectItem>
+                <SelectItem value="propostas">Clientes Diretos</SelectItem>
+                <SelectItem value="propostas_corretores">Via Corretores</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
@@ -1251,15 +644,15 @@ export default function PropostasPage() {
       <div className="bg-white rounded-lg shadow border border-gray-200">
         <div className="p-4 border-b border-gray-200">
           <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-gray-900">Lista de Propostas</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Lista de Clientes Aprovados</h2>
             <div className="text-sm text-gray-600">
-              Mostrando {indiceInicio + 1}-{Math.min(indiceFim, totalItens)} de {totalItens} propostas
+              Mostrando {indiceInicio + 1}-{Math.min(indiceFim, totalItens)} de {totalItens} clientes
             </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full divide-y divide-gray-200 text-sm">
+        <div className="overflow-x-auto w-full">
+          <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1269,10 +662,19 @@ export default function PropostasPage() {
                   Contato
                 </th>
                 <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Origem/Status
+                  Corretor
                 </th>
                 <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Valor/Data
+                </th>
+                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Administradora
+                </th>
+                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Data de Cadastro
+                </th>
+                <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status Cadastro
                 </th>
                 <th className="px-4 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Ações
@@ -1280,572 +682,177 @@ export default function PropostasPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {propostasExibidas.map((proposta) => {
-                const statusConfig = getStatusBadge(proposta.status)
-                const origemConfig = getOrigemBadge(proposta.origem)
-                return (
-                  <tr key={`${proposta.origem}-${proposta.id}`} className="hover:bg-gray-50">
-                    <td className="px-4 py-4">
-                      <div className="text-sm font-medium text-gray-900" title={obterNomeCliente(proposta)}>
+              {propostasExibidas.map((proposta) => (
+                <tr key={proposta.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-4">
+                    <div className="flex flex-col">
+                      <div className="text-sm font-medium text-gray-900">
                         {obterNomeCliente(proposta)}
                       </div>
-                      <div className="text-xs text-gray-500">ID: {obterIdSeguro(proposta)}</div>
-                      {(proposta.produto_nome || proposta.produto) && (
-                        <div className="text-xs text-gray-600 mt-1">Produto: {proposta.produto_nome || proposta.produto}</div>
+                      <div className="text-sm text-gray-500">
+                        {proposta.origem === "propostas" ? "Cliente Direto" : "Via Corretor"}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="text-sm text-gray-900">{obterEmailCliente(proposta)}</div>
+                    <div className="text-sm text-gray-500">
+                      {proposta.telefone || proposta.celular || "Telefone não informado"}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="space-y-1">
+                      {proposta.corretor_nome ? (
+                        <span className="text-sm font-semibold text-gray-800">{proposta.corretor_nome}</span>
+                      ) : (
+                        <span className="text-sm text-gray-400">Envio Direto</span>
                       )}
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="text-xs text-gray-900" title={obterEmailCliente(proposta)}>
-                        {obterEmailCliente(proposta)}
-                      </div>
-                      <div className="text-xs text-gray-500" title={obterTelefoneCliente(proposta)}>
-                        {obterTelefoneCliente(proposta)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="space-y-1">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${origemConfig.color}`}
-                        >
-                          {origemConfig.label}
-                        </span>
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${statusConfig.color}`}
-                        >
-                          {statusConfig.label}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500" title={proposta.corretor_nome ? `Corretor: ${proposta.corretor_nome}` : "Envio Direto"}>
-                        {proposta.corretor_nome ? (
-                          <span className="text-gray-900 font-normal">{proposta.corretor_nome}</span>
-                        ) : (
-                          <span className="text-gray-400">Envio Direto</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="text-sm font-medium text-gray-900">
-                        R$ {calcularValorTotalMensal(proposta).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                      </div>
-                      <div className="text-xs text-gray-500">{formatarDataSegura(proposta.created_at)}</div>
-                      <div className="text-xs text-gray-500">{formatarHoraSegura(proposta.created_at)}</div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="flex flex-col space-y-1">
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="text-sm text-gray-900">
+                      {proposta.valor
+                        ? formatarMoeda(Number(String(proposta.valor).replace(/[^\d,\.]/g, '').replace(',', '.')))
+                        : "Valor não informado"}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {proposta.created_at ? new Date(proposta.created_at).toLocaleDateString("pt-BR") : ""}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="text-sm text-gray-900">
+                      {proposta.administradora || <span className="text-gray-400">-</span>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="text-sm text-gray-900">
+                      {proposta.created_at ? new Date(proposta.created_at).toLocaleDateString("pt-BR") : <span className="text-gray-400">-</span>}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {proposta.data_vigencia ? `Vig.: ${new Date(proposta.data_vigencia).toLocaleDateString("pt-BR")}` : ""}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    {verificarCadastroCompleto(proposta) ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Completo
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                        <Calendar className="h-3 w-3 mr-1" />
+                        Pendente
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="flex flex-col space-y-1">
+                      <button
+                        onClick={() => abrirModalDetalhes(proposta)}
+                        className="text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-xs transition-colors"
+                      >
+                        <Eye className="h-3 w-3 inline mr-1" />
+                        Ver
+                      </button>
+
+                      {!verificarCadastroCompleto(proposta) && (
                         <button
-                          onClick={() => abrirModalDetalhes(proposta)}
-                          className="text-gray-700 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-xs transition-colors"
+                          onClick={() => abrirModalCadastro(proposta)}
+                          className="text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors text-xs"
                         >
-                          Ver
+                          <Save className="h-3 w-3 inline mr-1" />
+                          Completar Cadastro
                         </button>
-
-                        {proposta.status === "parcial" && (
-                          <button
-                            onClick={() => enviarEmailValidacao(proposta)}
-                            disabled={enviandoEmail === proposta.id}
-                            className="text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded disabled:opacity-50 transition-colors text-xs"
-                          >
-                            {enviandoEmail === proposta.id ? "..." : "Email"}
-                          </button>
-                        )}
-
-                        {proposta.status === "pendente" && (
-                            <button
-                            onClick={() => enviarParaAnalise(proposta.id)}
-                            className="text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors text-xs"
-                            >
-                            Enviar para Análise
-                            </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
 
         {propostasFiltradas.length === 0 && (
           <div className="text-center py-12">
-            <div className="text-gray-500 text-lg">Nenhuma proposta encontrada</div>
+            <div className="text-gray-500 text-lg">Nenhum cliente aprovado encontrado</div>
             <div className="text-gray-400 text-sm mt-2">
-              {filtro || statusFiltro !== "todos" || origemFiltro !== "todas"
+              {filtro || origemFiltro !== "todas"
                 ? "Tente ajustar os filtros de busca"
-                : "Aguardando novas propostas"}
-            </div>
-          </div>
-        )}
-
-        {/* Paginação */}
-        {totalPaginas > 1 && (
-          <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-700">
-                Página {paginaAtual} de {totalPaginas}
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPaginaAtual(Math.max(1, paginaAtual - 1))}
-                  disabled={paginaAtual === 1}
-                  className="h-8"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Anterior
-                </Button>
-
-                <div className="flex space-x-1">
-                  {Array.from({ length: Math.min(5, totalPaginas) }, (_, i) => {
-                    let pageNum
-                    if (totalPaginas <= 5) {
-                      pageNum = i + 1
-                    } else if (paginaAtual <= 3) {
-                      pageNum = i + 1
-                    } else if (paginaAtual >= totalPaginas - 2) {
-                      pageNum = totalPaginas - 4 + i
-                    } else {
-                      pageNum = paginaAtual - 2 + i
-                    }
-
-                    return (
-                      <Button
-                        key={pageNum}
-                        variant={paginaAtual === pageNum ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setPaginaAtual(pageNum)}
-                        className="h-8 w-8 p-0"
-                      >
-                        {pageNum}
-                      </Button>
-                    )
-                  })}
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPaginaAtual(Math.min(totalPaginas, paginaAtual + 1))}
-                  disabled={paginaAtual === totalPaginas}
-                  className="h-8"
-                >
-                  Próxima
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
+                : "Nenhuma proposta foi aprovada ainda"}
             </div>
           </div>
         )}
       </div>
 
-      {/* Modal de Detalhes */}
-      {showModalDetalhes && propostaDetalhada && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-7xl w-full max-h-[95vh] overflow-y-auto border border-gray-300">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6 border-b border-gray-200 pb-4">
-                <h2 className="text-2xl font-bold text-gray-900">Detalhes da Proposta</h2>
-                <div className="flex gap-3">
-                    <Button
-                    onClick={() => setShowModalPDF(true)}
-                      disabled={generatingPdf}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                    >
-                    {generatingPdf ? "Gerando PDF..." : "Gerar PDF"}
-                  </Button>
-                  <Button onClick={() => setShowModalDetalhes(false)} variant="outline">
-                    Fechar
-                  </Button>
-                </div>
-              </div>
-
-              {loadingDetalhes ? (
-                <div className="flex items-center justify-center h-64">
-                  <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-gray-600"></div>
-                  <span className="ml-4 text-lg text-gray-700">Carregando detalhes...</span>
-                </div>
-              ) : (
-                <Tabs defaultValue="dados" className="w-full">
-                  <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="dados">Dados Pessoais</TabsTrigger>
-                    <TabsTrigger value="documentos">Documentos</TabsTrigger>
-                    <TabsTrigger value="saude">Declaração de Saúde</TabsTrigger>
-                    <TabsTrigger value="dependentes">Dependentes</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="dados" className="space-y-6 mt-6">
-                    {/* Dados do Titular */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Dados do Titular</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Nome Completo</label>
-                            <p className="text-gray-900 font-medium">{obterNomeCliente(propostaDetalhada)}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Email</label>
-                            <p className="text-gray-900">{obterEmailCliente(propostaDetalhada)}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Telefone</label>
-                            <p className="text-gray-900">{obterTelefoneCliente(propostaDetalhada)}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">CPF</label>
-                            <p className="text-gray-900">{propostaDetalhada.cpf || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">RG</label>
-                            <p className="text-gray-900">{propostaDetalhada.rg || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Órgão Emissor</label>
-                            <p className="text-gray-900">{propostaDetalhada.orgao_emissor || propostaDetalhada.orgao_expedidor || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">CNS</label>
-                            <p className="text-gray-900">{propostaDetalhada.cns || propostaDetalhada.cns_cliente || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Data de Nascimento</label>
-                            <p className="text-gray-900">
-                              {propostaDetalhada.data_nascimento
-                                ? formatarDataSegura(propostaDetalhada.data_nascimento)
-                                : "Não informado"}
-                            </p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Idade</label>
-                            <p className="text-gray-900">{calcularIdade(propostaDetalhada.data_nascimento)}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Sexo</label>
-                            <p className="text-gray-900">{propostaDetalhada.sexo || propostaDetalhada.sexo_cliente || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Estado Civil</label>
-                            <p className="text-gray-900">{propostaDetalhada.estado_civil || propostaDetalhada.estado_civil_cliente || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Naturalidade</label>
-                            <p className="text-gray-900">{propostaDetalhada.naturalidade || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">UF de Nascimento</label>
-                            <p className="text-gray-900">{propostaDetalhada.uf_nascimento || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Nome da Mãe</label>
-                            <p className="text-gray-900">{propostaDetalhada.nome_mae || propostaDetalhada.nome_mae_cliente || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Nome do Pai</label>
-                            <p className="text-gray-900">{propostaDetalhada.nome_pai || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Nacionalidade</label>
-                            <p className="text-gray-900">{propostaDetalhada.nacionalidade || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Profissão</label>
-                            <p className="text-gray-900">{propostaDetalhada.profissao || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Assinatura</label>
-                            {propostaDetalhada.assinatura || propostaDetalhada.assinatura_imagem ? (
-                              <img
-                                src={propostaDetalhada.assinatura || propostaDetalhada.assinatura_imagem}
-                                alt="Assinatura"
-                                style={{ maxWidth: 200, border: "1px solid #ccc", background: "#fff" }}
-                              />
-                            ) : (
-                              <p className="text-gray-900">Não informado</p>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Endereço */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Endereço</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-600">Logradouro</label>
-                            <p className="text-gray-900">
-                              {propostaDetalhada.endereco || "Não informado"}
-                              {propostaDetalhada.numero && `, ${propostaDetalhada.numero}`}
-                            </p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Complemento</label>
-                            <p className="text-gray-900">{propostaDetalhada.complemento || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Bairro</label>
-                            <p className="text-gray-900">{propostaDetalhada.bairro || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Cidade</label>
-                            <p className="text-gray-900">{propostaDetalhada.cidade || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Estado</label>
-                            <p className="text-gray-900">
-                              {propostaDetalhada.estado || propostaDetalhada.uf || "Não informado"}
-                            </p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">CEP</label>
-                            <p className="text-gray-900">{propostaDetalhada.cep || "Não informado"}</p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    {/* Informações do Plano */}
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Informações do Plano</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Produto</label>
-                            <p className="text-gray-900 font-medium">
-                              {propostaDetalhada.produto_nome || propostaDetalhada.produto || "Não informado"}
-                            </p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Plano</label>
-                            <p className="text-gray-900">
-                              {propostaDetalhada.plano_nome || propostaDetalhada.sigla_plano || "Não informado"}
-                            </p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Cobertura</label>
-                            <p className="text-gray-900">{propostaDetalhada.cobertura || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Acomodação</label>
-                            <p className="text-gray-900">{propostaDetalhada.acomodacao || "Não informado"}</p>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Valor Mensal</label>
-                            <p className="text-2xl font-bold text-green-600">
-                              R$ {calcularValorTotalMensal(propostaDetalhada).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </p>
-                            {/* Detalhamento dos valores se houver dependentes */}
-                            {(() => {
-                              const dependentesArr = parseDependentes(propostaDetalhada)
-                              if (dependentesArr && dependentesArr.length > 0) {
-                                return (
-                                  <div className="mt-2 text-xs text-gray-600">
-                                    <div><b>{propostaDetalhada.nome}</b>: R$ {((typeof propostaDetalhada.valor_mensal !== "number" ? String(propostaDetalhada.valor_mensal).replace(/[^\d,\.]/g, "").replace(",", ".") : propostaDetalhada.valor_mensal) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
-                                    {dependentesArr.map((dep: any, idx: number) => {
-                                      let valorDep = dep.valor_individual || dep.valor || dep.valor_plano || 0
-                                      if (typeof valorDep !== "number") {
-                                        valorDep = String(valorDep).replace(/[^\d,\.]/g, "").replace(",", ".")
-                                        valorDep = Number.parseFloat(valorDep)
-                                      }
-                                      return (
-                                        <div key={idx}><b>{dep.nome}</b>: R$ {(!isNaN(valorDep) && valorDep > 0 ? valorDep : 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</div>
-                                      )
-                                    })}
-                                  </div>
-                                )
-                              }
-                              return null
-                            })()}
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-600">Status</label>
-                            <Badge className={getStatusBadge(propostaDetalhada.status).color}>
-                              {getStatusBadge(propostaDetalhada.status).label}
-                            </Badge>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  <TabsContent value="documentos" className="space-y-6 mt-6">
-                    {/* Documentos do Titular */}
-                    {renderDocumentos(
-                      obterDocumentosInteligente(propostaDetalhada, "titular"),
-                      "Documentos do Titular",
-                      "titular",
-                    )}
-
-                    {/* Documentos dos Dependentes */}
-                    {dependentes.map((dependente: any, index: any) => {
-                      const documentosDep = obterDocumentosInteligente(dependente, "dependente")
-                      if (Object.keys(documentosDep).length > 0) {
-                        return renderDocumentos(
-                          documentosDep,
-                          `Documentos - ${dependente.nome} (${getParentescoAmigavel(dependente.parentesco)})`,
-                          "dependente",
-                        )
-                      }
-                      return null
-                    })}
-                  </TabsContent>
-
-                  <TabsContent value="saude" className="space-y-6 mt-6">
-                    {renderDeclaracaoSaudeUnificada()}
-                  </TabsContent>
-
-                  <TabsContent value="dependentes" className="space-y-6 mt-6">
-                    {dependentes.length === 0 ? (
-                      <Card>
-                        <CardContent className="text-center py-8">
-                          <p className="text-gray-500">Nenhum dependente cadastrado</p>
-                        </CardContent>
-                      </Card>
-                    ) : (
-                      <div className="space-y-4">
-                        {dependentes.map((dependente: any, index: any) => (
-                          <Card key={dependente.id || index}>
-                            <CardHeader>
-                              <CardTitle className="text-lg">
-                                {dependente.nome} - {getParentescoAmigavel(dependente.parentesco)}
-                              </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-600">Nome Completo</label>
-                                  <p className="text-gray-900">{dependente.nome || "Não informado"}</p>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-600">CPF</label>
-                                  <p className="text-gray-900">{dependente.cpf || "Não informado"}</p>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-600">Data de Nascimento</label>
-                                  <p className="text-gray-900">
-                                    {dependente.data_nascimento
-                                      ? formatarDataSegura(dependente.data_nascimento)
-                                      : "Não informado"}
-                                  </p>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-600">Idade</label>
-                                  <p className="text-gray-900">{calcularIdade(dependente.data_nascimento)}</p>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-600">Sexo</label>
-                                  <p className="text-gray-900">{dependente.sexo || "Não informado"}</p>
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-600">Parentesco</label>
-                                  <p className="text-gray-900">{getParentescoAmigavel(dependente.parentesco)}</p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-                </Tabs>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Rejeição */}
-      {showModalRejeicao && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4 border border-gray-300">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900">Rejeitar Proposta</h3>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Motivo da rejeição:</label>
-              <textarea
-                value={motivoRejeicao}
-                onChange={(e) => setMotivoRejeicao(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
-                rows={4}
-                placeholder="Descreva o motivo da rejeição..."
-              />
-            </div>
-            <div className="flex justify-end space-x-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowModalRejeicao(false)
-                  setMotivoRejeicao("")
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={rejeitarProposta}
-                disabled={!motivoRejeicao.trim()}
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                Confirmar Rejeição
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Seleção de Modelo PDF */}
-      {showModalPDF && (
+      {/* Modal de Cadastro */}
+      {showModalCadastro && propostaCadastro && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold mb-4">Selecionar Modelo de Proposta</h3>
+            <h3 className="text-lg font-semibold mb-4">Completar Cadastro</h3>
             <p className="text-gray-600 mb-4">
-              Escolha o modelo que será usado para gerar o PDF da proposta
+              Informe os dados para finalizar o cadastro de <strong>{obterNomeCliente(propostaCadastro)}</strong>
             </p>
             
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Modelo <span className="text-red-500">*</span>
-              </label>
-              <Select value={modeloSelecionado} onValueChange={setModeloSelecionado}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione um modelo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {modelosProposta.map((modelo) => (
-                    <SelectItem key={modelo.id} value={modelo.id}>
-                      {modelo.titulo}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Administradora <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="text"
+                  value={administradora}
+                  onChange={(e) => setAdministradora(e.target.value)}
+                  placeholder="Nome da administradora"
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Data de Vencimento <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={dataVencimento}
+                  onChange={(e) => setDataVencimento(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Data de Vigência <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  type="date"
+                  value={dataVigencia}
+                  onChange={(e) => setDataVigencia(e.target.value)}
+                  className="w-full"
+                />
+              </div>
             </div>
             
-            <div className="flex justify-end space-x-3">
+            <div className="flex justify-end space-x-3 mt-6">
               <button
-                onClick={() => setShowModalPDF(false)}
+                onClick={() => setShowModalCadastro(false)}
                 className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
               >
                 Cancelar
               </button>
               <button
-                onClick={gerarPDFComModelo}
-                disabled={generatingPdf || !modeloSelecionado}
+                onClick={finalizarCadastro}
+                disabled={saving || !administradora || !dataVencimento || !dataVigencia}
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
-                {generatingPdf ? (
+                {saving ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Gerando...
+                    Salvando...
                   </>
                 ) : (
                   <>
-                    Gerar PDF
+                    <Save className="h-4 w-4 mr-2" />
+                    Finalizar Cadastro
                   </>
                 )}
               </button>
@@ -1853,25 +860,658 @@ export default function PropostasPage() {
           </div>
         </div>
       )}
-      {pdfUrlGerado && (
-        <div className="mt-4 text-center">
-          <a
-            href={pdfUrlGerado}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            className="inline-block px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-          >
-            Baixar PDF Gerado
-          </a>
-          <button
-            className="block mt-2 text-xs text-gray-500 underline"
-            onClick={() => setPdfUrlGerado(null)}
-          >
-            Fechar link
-          </button>
+
+      {/* Modal de Detalhes */}
+      {showModalDetalhes && propostaDetalhada && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[95vh] overflow-y-auto border border-gray-300">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6 border-b border-gray-200 pb-4">
+                <h2 className="text-2xl font-bold text-gray-900">Detalhes do Cliente</h2>
+                <button onClick={() => setShowModalDetalhes(false)} className="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded">Fechar</button>
+              </div>
+              <Tabs defaultValue="dados" className="w-full">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="dados">Dados Pessoais</TabsTrigger>
+                  <TabsTrigger value="endereco">Endereço</TabsTrigger>
+                  <TabsTrigger value="plano">Plano</TabsTrigger>
+                  <TabsTrigger value="documentos">Documentos</TabsTrigger>
+                </TabsList>
+                <TabsContent value="dados" className="space-y-6 mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Dados do Cliente</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className="text-sm font-medium text-gray-700">Nome</label><p className="text-gray-900">{obterNomeCliente(propostaDetalhada)}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Email</label><p className="text-gray-900">{obterEmailCliente(propostaDetalhada)}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Telefone</label><p className="text-gray-900">{propostaDetalhada.telefone || propostaDetalhada.celular || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">CPF</label><p className="text-gray-900">{propostaDetalhada.cpf || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">RG</label><p className="text-gray-900">{propostaDetalhada.rg || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Órgão Emissor</label><p className="text-gray-900">{propostaDetalhada.orgao_emissor || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">CNS</label><p className="text-gray-900">{propostaDetalhada.cns || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Data de Nascimento</label><p className="text-gray-900">{propostaDetalhada.data_nascimento ? new Date(propostaDetalhada.data_nascimento).toLocaleDateString("pt-BR") : "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Sexo</label><p className="text-gray-900">{propostaDetalhada.sexo || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Estado Civil</label><p className="text-gray-900">{propostaDetalhada.estado_civil || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Nome da Mãe</label><p className="text-gray-900">{propostaDetalhada.nome_mae || "Não informado"}</p></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                <TabsContent value="endereco" className="space-y-6 mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Endereço</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className="text-sm font-medium text-gray-700">CEP</label><p className="text-gray-900">{propostaDetalhada.cep || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Endereço</label><p className="text-gray-900">{propostaDetalhada.endereco || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Número</label><p className="text-gray-900">{propostaDetalhada.numero || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Complemento</label><p className="text-gray-900">{propostaDetalhada.complemento || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Bairro</label><p className="text-gray-900">{propostaDetalhada.bairro || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Cidade</label><p className="text-gray-900">{propostaDetalhada.cidade || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Estado</label><p className="text-gray-900">{propostaDetalhada.estado || "Não informado"}</p></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                <TabsContent value="plano" className="space-y-6 mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Informações do Plano</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label className="text-sm font-medium text-gray-700">Produto</label><p className="text-gray-900">{propostaDetalhada.produto_id || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Cobertura</label><p className="text-gray-900">{propostaDetalhada.cobertura || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Acomodação</label><p className="text-gray-900">{propostaDetalhada.acomodacao || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Valor</label><p className="text-2xl font-bold text-green-600">{propostaDetalhada.valor ? formatarMoeda(Number(String(propostaDetalhada.valor).replace(/[^\d,\.]/g, '').replace(',', '.'))) : "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Administradora</label><p className="text-gray-900">{propostaDetalhada.administradora || "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Data de Vigência</label><p className="text-gray-900">{propostaDetalhada.data_vigencia ? new Date(propostaDetalhada.data_vigencia).toLocaleDateString("pt-BR") : "Não informado"}</p></div>
+                        <div><label className="text-sm font-medium text-gray-700">Data de Vencimento</label><p className="text-gray-900">{propostaDetalhada.data_vencimento ? new Date(propostaDetalhada.data_vencimento).toLocaleDateString("pt-BR") : "Não informado"}</p></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                <TabsContent value="documentos" className="space-y-6 mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Documentos do Cliente</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {propostaDetalhada.documentos_urls && Object.keys(propostaDetalhada.documentos_urls).length > 0 ? (
+                          Object.entries(propostaDetalhada.documentos_urls).map(([tipo, url]: [string, string]) => (
+                            <div key={tipo} className="border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                              <div>
+                                <div className="font-medium text-sm text-gray-900">{tipo.replace(/_/g, ' ').toUpperCase()}</div>
+                                <div className="text-xs text-gray-500">{url.split('.').pop()?.toUpperCase()}</div>
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => window.open(url, '_blank')} className="text-blue-600 hover:underline text-xs">Visualizar</button>
+                                <a href={url} download target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline text-xs">Baixar</a>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-gray-500 text-sm col-span-2">Nenhum documento enviado.</div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de cadastro manual */}
+      {showModalCadastroManual && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-4 sm:p-8 w-full max-w-4xl mx-2 relative max-h-[95vh] overflow-y-auto">
+            <button
+              className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 text-2xl font-bold"
+              onClick={() => setShowModalCadastroManual(false)}
+              aria-label="Fechar"
+            >
+              ×
+            </button>
+            <h2 className="text-xl font-bold mb-4 text-center">Cadastro Manual de Cliente</h2>
+            <form onSubmit={handleCadastroManual} className="space-y-6">
+              {/* Dados do Titular */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4 text-gray-800">Dados do Titular</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Nome *</label>
+                    <Input value={formManual.nome} onChange={e => setFormManual({ ...formManual, nome: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">CPF *</label>
+                    <Input
+                      value={formManual.cpf}
+                      onChange={e => {
+                        formatarCpfInput(e)
+                      }}
+                      placeholder="000.000.000-00"
+                      required
+                      maxLength={14}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Data de Nascimento *</label>
+                    <Input type="date" value={formManual.data_nascimento} onChange={e => setFormManual({ ...formManual, data_nascimento: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">E-mail *</label>
+                    <Input type="email" value={formManual.email} onChange={e => setFormManual({ ...formManual, email: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Telefone *</label>
+                    <Input
+                      value={formManual.telefone}
+                      onChange={formatarTelefoneInput}
+                      placeholder="(00) 00000-0000"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">CNS *</label>
+                    <Input value={formManual.cns} onChange={e => setFormManual({ ...formManual, cns: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">RG *</label>
+                    <Input value={formManual.rg} onChange={e => setFormManual({ ...formManual, rg: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Órgão Emissor *</label>
+                    <Input value={formManual.orgao_emissor} onChange={e => setFormManual({ ...formManual, orgao_emissor: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Nome da Mãe *</label>
+                    <Input value={formManual.nome_mae} onChange={e => setFormManual({ ...formManual, nome_mae: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Sexo *</label>
+                    <Select value={formManual.sexo} onValueChange={v => setFormManual({ ...formManual, sexo: v })} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Masculino">Masculino</SelectItem>
+                        <SelectItem value="Feminino">Feminino</SelectItem>
+                        <SelectItem value="Outro">Outro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Estado Civil */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Estado Civil *</label>
+                    <Select value={formManual.estado_civil || "Solteiro(a)"} onValueChange={v => setFormManual({ ...formManual, estado_civil: v })} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Solteiro(a)">Solteiro(a)</SelectItem>
+                        <SelectItem value="Casado(a)">Casado(a)</SelectItem>
+                        <SelectItem value="Divorciado(a)">Divorciado(a)</SelectItem>
+                        <SelectItem value="Viúvo(a)">Viúvo(a)</SelectItem>
+                        <SelectItem value="União Estável">União Estável</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">UF de Nascimento *</label>
+                    <Input value={formManual.uf_nascimento} onChange={e => setFormManual({ ...formManual, uf_nascimento: e.target.value })} required />
+                  </div>
+                </div>
+              </div>
+
+              {/* Endereço */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4 text-gray-800">Endereço</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">CEP *</label>
+                    <Input
+                      value={formManual.cep}
+                      onChange={e => {
+                        formatarCepInput(e)
+                        if (e.target.value.replace(/\D/g, "").length === 8) {
+                          buscarCep(e.target.value)
+                        }
+                      }}
+                      placeholder="00000-000"
+                      required
+                      maxLength={9}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Endereço *</label>
+                    <Input value={formManual.endereco} onChange={e => setFormManual({ ...formManual, endereco: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Número *</label>
+                    <Input value={formManual.numero} onChange={e => setFormManual({ ...formManual, numero: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Complemento</label>
+                    <Input value={formManual.complemento} onChange={e => setFormManual({ ...formManual, complemento: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Bairro *</label>
+                    <Input value={formManual.bairro} onChange={e => setFormManual({ ...formManual, bairro: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Cidade *</label>
+                    <Input value={formManual.cidade} onChange={e => setFormManual({ ...formManual, cidade: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Estado *</label>
+                    <Input value={formManual.estado} onChange={e => setFormManual({ ...formManual, estado: e.target.value })} required />
+                  </div>
+                </div>
+              </div>
+
+              {/* Dados do Plano */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4 text-gray-800">Dados do Plano</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Produto *</label>
+                    <Select value={formManual.produto_id} onValueChange={v => setFormManual({ ...formManual, produto_id: v })} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o produto">
+                          {produtoSelecionado ? produtoSelecionado.nome : undefined}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {produtos.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Tabela de Preços</label>
+                    <Select value={tabelaSelecionada} onValueChange={v => setTabelaSelecionada(v)} disabled={!formManual.produto_id || tabelas.length === 0}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a tabela" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tabelas.map((t) => (
+                          <SelectItem key={t.tabela_id} value={t.tabela_id}>
+                            {t.tabela_titulo} - {t.segmentacao}
+                            {t.descricao ? ` (${t.descricao})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Cobertura *</label>
+                    <Select value={formManual.cobertura} onValueChange={v => setFormManual({ ...formManual, cobertura: v })} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Nacional">Nacional</SelectItem>
+                        <SelectItem value="Estadual">Estadual</SelectItem>
+                        <SelectItem value="Regional">Regional</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Acomodação *</label>
+                    <Select value={formManual.acomodacao} onValueChange={v => setFormManual({ ...formManual, acomodacao: v })} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Enfermaria">Enfermaria</SelectItem>
+                        <SelectItem value="Apartamento">Apartamento</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Código do Plano *</label>
+                    <Input value={formManual.sigla_plano} onChange={e => setFormManual({ ...formManual, sigla_plano: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Valor *</label>
+                    <Input value={formManual.valor} onChange={e => setFormManual({ ...formManual, valor: e.target.value })} required />
+                  </div>
+                </div>
+              </div>
+
+              {/* Anexos do Titular */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4 text-gray-800">Anexos do Titular</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">RG - Frente</label>
+                    <Input type="file" accept="image/*,.pdf" onChange={e => {
+                      if (e.target.files && e.target.files[0]) {
+                        setFormManual({
+                          ...formManual,
+                          anexos: { ...formManual.anexos, rg_frente: e.target.files[0] }
+                        })
+                      }
+                    }} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">RG - Verso</label>
+                    <Input type="file" accept="image/*,.pdf" onChange={e => {
+                      if (e.target.files && e.target.files[0]) {
+                        setFormManual({
+                          ...formManual,
+                          anexos: { ...formManual.anexos, rg_verso: e.target.files[0] }
+                        })
+                      }
+                    }} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">CPF</label>
+                    <Input type="file" accept="image/*,.pdf" onChange={e => {
+                      if (e.target.files && e.target.files[0]) {
+                        setFormManual({
+                          ...formManual,
+                          anexos: { ...formManual.anexos, cpf: e.target.files[0] }
+                        })
+                      }
+                    }} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Comprovante de Residência</label>
+                    <Input type="file" accept="image/*,.pdf" onChange={e => {
+                      if (e.target.files && e.target.files[0]) {
+                        setFormManual({
+                          ...formManual,
+                          anexos: { ...formManual.anexos, comprovante_residencia: e.target.files[0] }
+                        })
+                      }
+                    }} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">CNS</label>
+                    <Input type="file" accept="image/*,.pdf" onChange={e => {
+                      if (e.target.files && e.target.files[0]) {
+                        setFormManual({
+                          ...formManual,
+                          anexos: { ...formManual.anexos, cns: e.target.files[0] }
+                        })
+                      }
+                    }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Dependentes */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">Dependentes</h3>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      const novoDependente = {
+                        nome: "",
+                        cpf: "",
+                        rg: "",
+                        data_nascimento: "",
+                        cns: "",
+                        parentesco: "",
+                        nome_mae: "",
+                        sexo: "Masculino",
+                        uf_nascimento: "SP",
+                        orgao_emissor: "",
+                        anexos: {
+                          rg_frente: null,
+                          rg_verso: null,
+                          comprovante_residencia: null,
+                        }
+                      }
+                      setFormManual({
+                        ...formManual,
+                        dependentes: [...formManual.dependentes, novoDependente],
+                        anexosDependentes: [...formManual.anexosDependentes, {}]
+                      })
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    + Adicionar Dependente
+                  </Button>
+                </div>
+                {formManual.dependentes.map((dependente, index) => (
+                  <div key={index} className="border border-gray-200 rounded-lg p-4 mb-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="font-medium text-gray-700">Dependente {index + 1}</h4>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          const novosDependentes = formManual.dependentes.filter((_, i) => i !== index)
+                          const novosAnexos = formManual.anexosDependentes.filter((_, i) => i !== index)
+                          setFormManual({
+                            ...formManual,
+                            dependentes: novosDependentes,
+                            anexosDependentes: novosAnexos
+                          })
+                        }}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Nome *</label>
+                        <Input value={dependente.nome} onChange={e => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].nome = e.target.value
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">CPF *</label>
+                        <Input value={dependente.cpf} onChange={e => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].cpf = e.target.value
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">RG *</label>
+                        <Input value={dependente.rg} onChange={e => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].rg = e.target.value
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Data de Nascimento *</label>
+                        <Input type="date" value={dependente.data_nascimento} onChange={e => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].data_nascimento = e.target.value
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">CNS *</label>
+                        <Input value={dependente.cns} onChange={e => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].cns = e.target.value
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Parentesco *</label>
+                        <Input value={dependente.parentesco} onChange={e => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].parentesco = e.target.value
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Nome da Mãe *</label>
+                        <Input value={dependente.nome_mae} onChange={e => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].nome_mae = e.target.value
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Sexo *</label>
+                        <Select value={dependente.sexo} onValueChange={v => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].sexo = v
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Masculino">Masculino</SelectItem>
+                            <SelectItem value="Feminino">Feminino</SelectItem>
+                            <SelectItem value="Outro">Outro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">UF de Nascimento *</label>
+                        <Input value={dependente.uf_nascimento} onChange={e => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].uf_nascimento = e.target.value
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Órgão Emissor *</label>
+                        <Input value={dependente.orgao_emissor} onChange={e => {
+                          const novosDependentes = [...formManual.dependentes]
+                          novosDependentes[index].orgao_emissor = e.target.value
+                          setFormManual({ ...formManual, dependentes: novosDependentes })
+                        }} required />
+                      </div>
+                    </div>
+                    {/* Anexos do Dependente */}
+                    <div className="mt-4">
+                      <h5 className="font-medium text-gray-700 mb-2">Anexos do Dependente</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">RG - Frente</label>
+                          <Input type="file" accept="image/*,.pdf" onChange={e => {
+                            if (e.target.files && e.target.files[0]) {
+                              const novosAnexos = [...formManual.anexosDependentes]
+                              if (!novosAnexos[index]) novosAnexos[index] = {}
+                              novosAnexos[index].rg_frente = e.target.files[0]
+                              setFormManual({ ...formManual, anexosDependentes: novosAnexos })
+                            }
+                          }} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">RG - Verso</label>
+                          <Input type="file" accept="image/*,.pdf" onChange={e => {
+                            if (e.target.files && e.target.files[0]) {
+                              const novosAnexos = [...formManual.anexosDependentes]
+                              if (!novosAnexos[index]) novosAnexos[index] = {}
+                              novosAnexos[index].rg_verso = e.target.files[0]
+                              setFormManual({ ...formManual, anexosDependentes: novosAnexos })
+                            }
+                          }} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">Comprovante de Residência</label>
+                          <Input type="file" accept="image/*,.pdf" onChange={e => {
+                            if (e.target.files && e.target.files[0]) {
+                              const novosAnexos = [...formManual.anexosDependentes]
+                              if (!novosAnexos[index]) novosAnexos[index] = {}
+                              novosAnexos[index].comprovante_residencia = e.target.files[0]
+                              setFormManual({ ...formManual, anexosDependentes: novosAnexos })
+                            }
+                          }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Dados de Cadastro */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4 text-gray-800">Dados de Cadastro</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Corretor Responsável *</label>
+                    <Select value={formManual.corretor_id} onValueChange={v => setFormManual({ ...formManual, corretor_id: v })} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o corretor">
+                          {corretorSelecionado ? `${corretorSelecionado.nome} (${corretorSelecionado.email})` : undefined}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {corretoresDisponiveis.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.nome} ({c.email})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Administradora *</label>
+                    <Input value={formManual.administradora} onChange={e => setFormManual({ ...formManual, administradora: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Data de Vigência *</label>
+                    <Input type="date" value={formManual.data_vigencia} onChange={e => setFormManual({ ...formManual, data_vigencia: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Data de Vencimento *</label>
+                    <Input type="date" value={formManual.data_vencimento} onChange={e => setFormManual({ ...formManual, data_vencimento: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Data de Cadastro *</label>
+                    <Input type="date" value={formManual.data_cadastro} onChange={e => setFormManual({ ...formManual, data_cadastro: e.target.value })} required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Status *</label>
+                    <Select value={formManual.status} onValueChange={v => setFormManual({ ...formManual, status: v })} required>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cadastrado">Cadastrado</SelectItem>
+                        <SelectItem value="ativo">Ativo</SelectItem>
+                        <SelectItem value="cancelado">Cancelado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Observações */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4 text-gray-800">Observações</h3>
+                <Textarea
+                  value={formManual.observacoes}
+                  onChange={e => setFormManual({ ...formManual, observacoes: e.target.value })}
+                  placeholder="Digite observações adicionais..."
+                  rows={4}
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={() => setShowModalCadastroManual(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" className="bg-green-700 hover:bg-green-800 text-white" disabled={uploading}>
+                  {uploading ? "Salvando..." : "Salvar Cadastro"}
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
   )
-}
+} 
