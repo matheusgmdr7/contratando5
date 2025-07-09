@@ -27,7 +27,8 @@ import {
   CheckCircle,
   UserPlus,
 } from "lucide-react"
-import { usePermissions } from "@/hooks/use-permissions"
+import { usePermissions } from "../../hooks/use-permissions"
+import { signOutAdmin } from "@/lib/supabase-auth"
 
 export default function AdminSidebar() {
   const pathname = usePathname()
@@ -262,7 +263,7 @@ export default function AdminSidebar() {
                 </Link>
               </li>
               )}
-              {podeVisualizar("cadastrados") && (
+              {podeVisualizar("cadastrado") && (
               <li>
                 <Link
                   href="/admin/cadastrado"
