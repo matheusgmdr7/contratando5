@@ -840,7 +840,7 @@ export default function PropostasPage() {
 
   async function enviarParaAnalise(id: any) {
     try {
-      await atualizarStatusProposta(id, "pendente")
+      await atualizarStatusProposta(id, "em_analise")
       toast.success("Proposta enviada para análise com sucesso!")
       carregarPropostas()
     } catch (error: any) {
@@ -1143,7 +1143,9 @@ export default function PropostasPage() {
   const totalPaginas = Math.ceil(totalItens / itensPorPagina)
   const indiceInicio = (paginaAtual - 1) * itensPorPagina
   const indiceFim = indiceInicio + itensPorPagina
-  const propostasExibidas = propostasFiltradas.filter((proposta) => proposta.status !== "pendente").slice(indiceInicio, indiceFim)
+  // Filtro de propostas exibidas (inclui status 'pendente')
+  const statusPermitidos = ["parcial", "aprovada", "cadastrado", "aguardando_cliente", "pendente"]
+  const propostasExibidas = propostasFiltradas.filter((proposta) => statusPermitidos.includes(proposta.status)).slice(indiceInicio, indiceFim)
 
   // Reset da página quando filtros mudam
   useEffect(() => {
