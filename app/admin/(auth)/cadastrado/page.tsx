@@ -18,6 +18,7 @@ import { obterProdutosCorretores, obterValorProdutoPorIdade } from "@/services/p
 import { buscarTabelasPrecosPorProduto } from "@/services/tabelas-service"
 import { validarCPF } from "@/utils/validacoes"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { PdfDownloadButtons } from "@/components/pdf-utils/pdf-download-buttons"
 
 export default function CadastradoPage() {
   const [propostas, setPropostas] = useState<any[]>([])
@@ -871,7 +872,17 @@ export default function CadastradoPage() {
             <div className="p-6">
               <div className="flex justify-between items-center mb-6 border-b border-gray-200 pb-4">
                 <h2 className="text-2xl font-bold text-gray-900">Detalhes do Cliente</h2>
-                <button onClick={() => setShowModalDetalhes(false)} className="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded">Fechar</button>
+                <div className="flex gap-3">
+                  {propostaDetalhada.pdf_url && (
+                    <Button
+                      onClick={() => window.open(propostaDetalhada.pdf_url, "_blank")}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      Visualizar Proposta
+                    </Button>
+                  )}
+                  <button onClick={() => setShowModalDetalhes(false)} className="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded">Fechar</button>
+                </div>
               </div>
               <Tabs defaultValue="dados" className="w-full">
                 <TabsList className="grid w-full grid-cols-4">
@@ -966,6 +977,17 @@ export default function CadastradoPage() {
                   </Card>
                 </TabsContent>
               </Tabs>
+              
+              {/* Componente de Download de PDF */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-semibold mb-4 text-gray-800">Download de Documentos</h3>
+                <PdfDownloadButtons
+                  propostaId={propostaDetalhada.id}
+                  nomeCliente={obterNomeCliente(propostaDetalhada)}
+                  pdfUrl={propostaDetalhada.pdf_url || ""}
+                  documentosUrls={propostaDetalhada.documentos_urls || {}}
+                />
+              </div>
             </div>
           </div>
         </div>
