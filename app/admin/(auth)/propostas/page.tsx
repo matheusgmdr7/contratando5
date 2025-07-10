@@ -1447,11 +1447,19 @@ export default function PropostasPage() {
               <div className="flex justify-between items-center mb-6 border-b border-gray-200 pb-4">
                 <h2 className="text-2xl font-bold text-gray-900">Detalhes da Proposta</h2>
                 <div className="flex gap-3">
+                  {propostaDetalhada.pdf_url && (
                     <Button
-                    onClick={() => setShowModalPDF(true)}
-                      disabled={generatingPdf}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={() => window.open(propostaDetalhada.pdf_url, "_blank")}
+                      className="bg-green-600 hover:bg-green-700 text-white"
                     >
+                      Visualizar Proposta
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => setShowModalPDF(true)}
+                    disabled={generatingPdf}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
                     {generatingPdf ? "Gerando PDF..." : "Gerar PDF"}
                   </Button>
                   <Button onClick={() => setShowModalDetalhes(false)} variant="outline">
