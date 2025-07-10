@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Eye, CheckCircle, XCircle, Search, Filter, RefreshCw } from "lucide-react"
 import { formatarMoeda } from "@/utils/formatters"
+import { supabase } from "@/lib/supabase"
 
 export default function EmAnalisePage() {
   const [propostas, setPropostas] = useState<any[]>([])
@@ -34,8 +35,8 @@ export default function EmAnalisePage() {
       setLoading(true)
       console.log("🔄 Carregando propostas em análise...")
       const data = await buscarPropostas()
-      // Filtrar apenas propostas com status "pendente"
-      const propostasEmAnalise = data.filter((p: any) => p.status === "pendente")
+      // Filtrar apenas propostas com status "em_analise"
+      const propostasEmAnalise = data.filter((p: any) => p.status === "em_analise")
       console.log("📊 Propostas em análise:", propostasEmAnalise.length)
       setPropostas(propostasEmAnalise)
     } catch (error: any) {
@@ -48,7 +49,21 @@ export default function EmAnalisePage() {
 
   async function aprovarProposta(id: string) {
     try {
-      await atualizarStatusProposta(id, "aprovada")
+      // Buscar a proposta completa para pegar os dados do plano
+      const proposta = propostas.find((p) => p.id === id)
+      if (!proposta) throw new Error("Proposta não encontrada")
+
+      // Atualizar status e campos do plano
+      const { error } = await supabase.from("propostas").update({
+        status: "aprovada",
+        produto_id: proposta.produto_id || null,
+        sigla_plano: proposta.sigla_plano || null,
+        valor: proposta.valor || null,
+        cobertura: proposta.cobertura || null,
+        acomodacao: proposta.acomodacao || null,
+      }).eq("id", id)
+      if (error) throw error
+
       toast.success("Proposta aprovada com sucesso!")
       carregarPropostas()
     } catch (error: any) {
