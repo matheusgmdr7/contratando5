@@ -1143,7 +1143,7 @@ export default function PropostasPage() {
   const totalPaginas = Math.ceil(totalItens / itensPorPagina)
   const indiceInicio = (paginaAtual - 1) * itensPorPagina
   const indiceFim = indiceInicio + itensPorPagina
-  const propostasExibidas = propostasFiltradas.slice(indiceInicio, indiceFim)
+  const propostasExibidas = propostasFiltradas.filter((proposta) => proposta.status !== "pendente").slice(indiceInicio, indiceFim)
 
   // Reset da página quando filtros mudam
   useEffect(() => {
