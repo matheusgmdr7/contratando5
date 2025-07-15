@@ -517,7 +517,7 @@ export default function PropostasPage() {
       data_criacao: proposta.created_at ? proposta.created_at.split("T")[0].split("-").reverse().join("/") : "",
       data_atualizacao: proposta.updated_at ? proposta.updated_at.split("T")[0].split("-").reverse().join("/") : "",
       status: proposta.status || "pendente",
-      assinatura: `Assinado digitalmente por: ${proposta.nome || proposta.nome_cliente || ""}\nCPF: ${proposta.cpf || ""}\nE-mail: ${proposta.email || proposta.email_cliente || ""}\nIP: ${proposta.ip || ""}\nData/Hora: ${proposta.data_assinatura || proposta.data_assinatura_digital || ""}\nEste documento foi assinado digitalmente conforme a legislação vigente.`,
+      assinatura: `Assinado digitalmente por: ${proposta.nome || proposta.nome_cliente || ""}\nCPF: ${proposta.cpf || ""}\nE-mail: ${proposta.email || proposta.email_cliente || ""}\nIP: ${proposta.ip_assinatura || proposta.ip || "Não informado"}\nUser Agent: ${proposta.user_agent || "Não informado"}\nData/Hora: ${proposta.assinado_em || proposta.data_assinatura || proposta.data_assinatura_digital || "Não informado"}\nEste documento foi assinado digitalmente conforme a legislação vigente.`,
       idade_titular: calcularIdade(proposta.data_nascimento),
     }
 
