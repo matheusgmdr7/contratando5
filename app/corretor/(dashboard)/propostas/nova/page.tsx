@@ -43,16 +43,14 @@ const formSchema = z.object({
   sexo: z.enum(["Masculino", "Feminino", "Outro"], {
     required_error: "Sexo é obrigatório",
   }),
-  uf_nascimento: z.string().min(1, "UF de nascimento é obrigatório"),
   estado_civil: z.enum([
     "Solteiro(a)",
     "Casado(a)",
     "Divorciado(a)",
     "Viúvo(a)",
-    "União Estável",
-    "Separado(a)",
-    "Outro"
+    "União Estável"
   ], { required_error: "Estado civil é obrigatório" }),
+  uf_nascimento: z.string().min(1, "UF de nascimento é obrigatório"),
 
   // Endereço
   cep: z.string().min(8, "CEP inválido"),
@@ -154,6 +152,7 @@ export default function NovaPropostaPage() {
       orgao_emissor: "",
       nome_mae: "",
       sexo: "Masculino" as const, // Valor padrão para campo obrigatório
+      estado_civil: "Solteiro(a)" as const, // Valor padrão para campo obrigatório
       uf_nascimento: "SP", // Valor padrão para campo obrigatório
       cep: "",
       endereco: "",
@@ -171,7 +170,6 @@ export default function NovaPropostaPage() {
       tem_dependentes: false,
       dependentes: [],
       observacoes: "",
-      estado_civil: "Solteiro(a)",
     },
   })
 
@@ -612,6 +610,7 @@ export default function NovaPropostaPage() {
         cns: data.cns,
         nome_mae: data.nome_mae,
         sexo: data.sexo,
+        estado_civil: data.estado_civil, // Adicionado
         orgao_emissor: data.orgao_emissor,
         sigla_plano: data.sigla_plano,
         cobertura: data.cobertura, // Adicionar campo cobertura
@@ -631,7 +630,6 @@ export default function NovaPropostaPage() {
         telefone_cliente: data.telefone,
         cns_cliente: data.cns,
         nome_mae_cliente: data.nome_mae,
-        estado_civil: data.estado_civil,
         // Novos campos para exibição correta na etapa 3
         produto_nome: produtoSelecionadoInterno?.nome || "",
         produto_descricao: produtoSelecionadoInterno?.descricao || "",
@@ -677,7 +675,8 @@ export default function NovaPropostaPage() {
       for (const [tipo, arquivo] of Object.entries(documentosUpload)) {
         if (arquivo) {
           try {
-            const fileName = `${propostaId}_${tipo}_${Date.now()}.pdf`
+            const extensao = arquivo.name.split('.').pop() || 'jpg'
+            const fileName = `${propostaId}_${tipo}_${Date.now()}.${extensao}`
             const { data: uploadData, error: uploadError } = await supabase.storage
               .from("documentos_propostas")
               .upload(fileName, arquivo)
@@ -702,7 +701,8 @@ export default function NovaPropostaPage() {
           for (const [tipo, arquivo] of Object.entries(docs)) {
             if (arquivo) {
               try {
-                const fileName = `${propostaId}_dependente_${dependenteId}_${tipo}_${Date.now()}.pdf`
+                const extensao = arquivo.name.split('.').pop() || 'jpg'
+                const fileName = `${propostaId}_dependente_${dependenteId}_${tipo}_${Date.now()}.${extensao}`
                 const { data: uploadData, error: uploadError } = await supabase.storage
                   .from("documentos_propostas")
                   .upload(fileName, arquivo)
@@ -1308,6 +1308,7 @@ export default function NovaPropostaPage() {
                     )}
                   />
 
+                  {/* Campo Estado Civil */}
                   <FormField
                     control={form.control}
                     name="estado_civil"
@@ -1326,8 +1327,6 @@ export default function NovaPropostaPage() {
                             <SelectItem value="Divorciado(a)">Divorciado(a)</SelectItem>
                             <SelectItem value="Viúvo(a)">Viúvo(a)</SelectItem>
                             <SelectItem value="União Estável">União Estável</SelectItem>
-                            <SelectItem value="Separado(a)">Separado(a)</SelectItem>
-                            <SelectItem value="Outro">Outro</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
