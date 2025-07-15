@@ -26,6 +26,8 @@ import {
   atualizarTabelaPreco,
   buscarTabelaPrecoDetalhada,
   adicionarFaixaEtaria,
+  buscarFaixasEtariasPorTabela,
+  removerFaixaEtaria,
 } from "@/services/tabelas-service"
 import type { TabelaPreco } from "@/types/tabelas"
 import { useToast } from "@/components/ui/use-toast"
@@ -218,6 +220,12 @@ export default function TabelasAdminPage() {
       if (editingTabela) {
         // Atualizar tabela existente
         await atualizarTabelaPreco(editingTabela.id, formData)
+
+        // Remover todas as faixas etárias antigas antes de adicionar as novas
+        const faixasAntigas = await buscarFaixasEtariasPorTabela(String(editingTabela.id))
+        for (const faixa of faixasAntigas) {
+          await removerFaixaEtaria(faixa.id)
+        }
 
         // Adicionar novas faixas etárias
         const faixasParaAdicionar = faixasValidas.map((f) => ({
