@@ -95,6 +95,15 @@ export class PropostaHTMLService {
         return "N/A"
       }
 
+      // Definir texto da marca d'água conforme o status
+      let textoMarcaDagua = "SUJEITO À ANÁLISE"
+      if (proposta.status === "aprovada") textoMarcaDagua = "APROVADA"
+      else if (proposta.status === "rejeitada") textoMarcaDagua = "REJEITADA"
+      else if (proposta.status === "cadastrado") textoMarcaDagua = "CADASTRADA"
+      else if (proposta.status === "parcial") textoMarcaDagua = "PENDENTE"
+      else if (proposta.status === "pendente") textoMarcaDagua = "PENDENTE"
+      // ... outros status se necessário
+
       // CSS melhorado e responsivo
       const styles = `
       <style>
@@ -328,6 +337,21 @@ export class PropostaHTMLService {
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
           }
         }
+        .watermark {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          z-index: 1000;
+          transform: translate(-50%, -50%) rotate(-30deg);
+          font-size: 6rem;
+          color: #b0b0b0;
+          opacity: 0.15;
+          font-weight: bold;
+          pointer-events: none;
+          white-space: nowrap;
+          text-align: center;
+          width: 100vw;
+        }
       </style>
     `
 
@@ -495,6 +519,7 @@ export class PropostaHTMLService {
         ${styles}
       </head>
       <body>
+        <div class="watermark">${textoMarcaDagua}</div>
         <div class="container">
           <div class="header">
             <h1>Resumo da Proposta</h1>
@@ -633,11 +658,12 @@ export class PropostaHTMLService {
     `
     } catch (error) {
       console.error("Erro ao gerar HTML da proposta:", error)
+      const msg = error instanceof Error ? error.message : String(error)
       return `
       <div style="color: red; text-align: center; padding: 20px;">
         <h2>Erro ao gerar resumo da proposta</h2>
         <p>Ocorreu um erro ao processar os dados. Por favor, tente novamente ou entre em contato com o suporte.</p>
-        <p>Detalhes do erro: ${error.message || "Erro desconhecido"}</p>
+        <p>Detalhes do erro: ${msg || "Erro desconhecido"}</p>
       </div>
     `
     }
